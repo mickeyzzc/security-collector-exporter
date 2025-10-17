@@ -62,8 +62,19 @@ func getProcessByInode(line string) string {
 		return "unknown"
 	}
 
-	// inode是最后一个字段
-	inode := parts[len(parts)-1]
+	// 通过第一列判断inode位置
+	// 第一列格式: "0:", "1:", "2:" 等
+	// 如果第一列以数字+冒号结尾，说明是数据行
+	var inode string
+	if strings.HasSuffix(parts[0], ":") {
+		// 数据行：inode是第10个字段（索引9）
+		if len(parts) >= 10 {
+			inode = parts[9]
+		}
+	} else {
+		// 可能是表头行或其他格式，尝试最后一个字段
+		inode = parts[len(parts)-1]
+	}
 	if inode == "" {
 		logger.Debug("getProcessByInode: inode为空")
 		return "unknown"
