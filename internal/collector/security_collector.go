@@ -2,8 +2,8 @@ package collector
 
 import (
 	"fmt"
-	"security-exporter/internal/config"
 	"security-exporter/internal/system"
+	"security-exporter/pkg/config"
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"

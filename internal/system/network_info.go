@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"security-exporter/pkg/logger"
 )
 
 // FirewallInfo 防火墙信息结构
@@ -68,10 +70,16 @@ func isUfwActive() bool {
 	}
 
 	// 检查ufw状态文件
-	ufwStatusPath := "/var/lib/ufw/ufw-not-booted"
-	if _, err := os.Stat(ufwStatusPath); os.IsNotExist(err) {
-		// 如果状态文件不存在，说明ufw可能已启动
-		return true
+	// 先检查/var/lib/ufw目录是否存在
+	ufwDir := "/var/lib/ufw"
+	if _, err := os.Stat(ufwDir); os.IsNotExist(err) {
+		// 如果目录不存在，直接跳过文件状态检查
+	} else {
+		ufwStatusPath := "/var/lib/ufw/ufw-not-booted"
+		if _, err := os.Stat(ufwStatusPath); os.IsNotExist(err) {
+			// 如果状态文件不存在，说明ufw可能已启动
+			return true
+		}
 	}
 
 	// 检查ufw进程
@@ -165,44 +173,66 @@ func GetPortsUseInfo() ([]PortUseInfo, error) {
 
 // GetPortsUseInfoWithStates 获取指定状态的端口使用信息
 func GetPortsUseInfoWithStates(states []string) ([]PortUseInfo, error) {
+	logger.Debug("GetPortsUseInfoWithStates: 开始获取端口信息，状态: %v", states)
 	var ports []PortUseInfo
 
 	// 读取 /proc/net/tcp 文件获取TCP端口
+	logger.Debug("GetPortsUseInfoWithStates: 开始读取TCP端口")
 	tcpPorts, err := getPortsFromProcNet("/proc/net/tcp", "tcp", states)
 	if err == nil {
 		ports = append(ports, tcpPorts...)
+		logger.Debug("GetPortsUseInfoWithStates: TCP端口读取完成，找到 %d 个端口", len(tcpPorts))
+	} else {
+		logger.Debug("GetPortsUseInfoWithStates: TCP端口读取失败: %v", err)
 	}
 
 	// 读取 /proc/net/tcp6 文件获取TCP6端口
+	logger.Debug("GetPortsUseInfoWithStates: 开始读取TCP6端口")
 	tcp6Ports, err := getPortsFromProcNet("/proc/net/tcp6", "tcp6", states)
 	if err == nil {
 		ports = append(ports, tcp6Ports...)
+		logger.Debug("GetPortsUseInfoWithStates: TCP6端口读取完成，找到 %d 个端口", len(tcp6Ports))
+	} else {
+		logger.Debug("GetPortsUseInfoWithStates: TCP6端口读取失败: %v", err)
 	}
 
 	// 读取 /proc/net/udp 文件获取UDP端口
+	logger.Debug("GetPortsUseInfoWithStates: 开始读取UDP端口")
 	udpPorts, err := getPortsFromProcNet("/proc/net/udp", "udp", states)
 	if err == nil {
 		ports = append(ports, udpPorts...)
+		logger.Debug("GetPortsUseInfoWithStates: UDP端口读取完成，找到 %d 个端口", len(udpPorts))
+	} else {
+		logger.Debug("GetPortsUseInfoWithStates: UDP端口读取失败: %v", err)
 	}
 
 	// 读取 /proc/net/udp6 文件获取UDP6端口
+	logger.Debug("GetPortsUseInfoWithStates: 开始读取UDP6端口")
 	udp6Ports, err := getPortsFromProcNet("/proc/net/udp6", "udp6", states)
 	if err == nil {
 		ports = append(ports, udp6Ports...)
+		logger.Debug("GetPortsUseInfoWithStates: UDP6端口读取完成，找到 %d 个端口", len(udp6Ports))
+	} else {
+		logger.Debug("GetPortsUseInfoWithStates: UDP6端口读取失败: %v", err)
 	}
 
+	logger.Debug("GetPortsUseInfoWithStates: 端口信息获取完成，总共找到 %d 个端口", len(ports))
 	return ports, nil
 }
 
 // getPortsFromProcNet 从 /proc/net/* 文件读取端口信息
 func getPortsFromProcNet(filePath, protocol string, allowedStates []string) ([]PortUseInfo, error) {
+	logger.Debug("getPortsFromProcNet: 开始读取文件 %s, 协议 %s, 允许状态 %v", filePath, protocol, allowedStates)
+
 	content, err := os.ReadFile(filePath)
 	if err != nil {
+		logger.Debug("getPortsFromProcNet: 无法读取文件 %s: %v", filePath, err)
 		return nil, err
 	}
 
 	lines := strings.Split(string(content), "\n")
 	var ports []PortUseInfo
+	logger.Debug("getPortsFromProcNet: 文件 %s 包含 %d 行", filePath, len(lines))
 
 	// 跳过表头行
 	for i, line := range lines {
@@ -258,7 +288,9 @@ func getPortsFromProcNet(filePath, protocol string, allowedStates []string) ([]P
 		}
 
 		// 获取进程信息
+		logger.Debug("getPortsFromProcNet: 开始获取端口 %s:%s 的进程信息", ip, port)
 		processName := getProcessByInode(line)
+		logger.Debug("getPortsFromProcNet: 端口 %s:%s 匹配到进程: %s", ip, port, processName)
 
 		ports = append(ports, PortUseInfo{
 			Protocol: protocol,
@@ -269,6 +301,7 @@ func getPortsFromProcNet(filePath, protocol string, allowedStates []string) ([]P
 		})
 	}
 
+	logger.Debug("getPortsFromProcNet: 文件 %s 处理完成，找到 %d 个有效端口", filePath, len(ports))
 	return ports, nil
 }
 

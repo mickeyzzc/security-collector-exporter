@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"security-exporter/pkg/logger"
 )
 
 // BoolToFloat64 将bool转换为float64
@@ -51,24 +53,34 @@ func isProcessRunning(processName string) bool {
 
 // getProcessByInode 通过inode获取进程名
 func getProcessByInode(line string) string {
+	logger.Debug("getProcessByInode: 开始解析行: %s", line)
+
 	// 解析行格式获取inode
 	parts := strings.Fields(line)
 	if len(parts) < 10 {
+		logger.Debug("getProcessByInode: 行字段数量不足，只有 %d 个字段", len(parts))
 		return "unknown"
 	}
 
 	// inode是最后一个字段
 	inode := parts[len(parts)-1]
 	if inode == "" {
+		logger.Debug("getProcessByInode: inode为空")
 		return "unknown"
 	}
+
+	logger.Debug("getProcessByInode: 提取到inode: %s", inode)
 
 	// 扫描所有进程目录查找匹配的inode
 	procDir := "/proc"
 	entries, err := os.ReadDir(procDir)
 	if err != nil {
+		logger.Debug("getProcessByInode: 无法读取/proc目录: %v", err)
 		return "unknown"
 	}
+
+	logger.Debug("getProcessByInode: 找到 %d 个进程目录", len(entries))
+	checkedProcesses := 0
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -81,6 +93,11 @@ func getProcessByInode(line string) string {
 			continue
 		}
 
+		checkedProcesses++
+		if checkedProcesses%100 == 0 {
+			logger.Debug("getProcessByInode: 已检查 %d 个进程", checkedProcesses)
+		}
+
 		// 检查进程的fd目录
 		fdDir := fmt.Sprintf("/proc/%s/fd", pid)
 		if fdEntries, err := os.ReadDir(fdDir); err == nil {
@@ -89,20 +106,25 @@ func getProcessByInode(line string) string {
 				linkPath := fmt.Sprintf("/proc/%s/fd/%s", pid, fdEntry.Name())
 				if target, err := os.Readlink(linkPath); err == nil {
 					// 检查是否匹配socket inode
-					if strings.Contains(target, fmt.Sprintf("socket:[%s]", inode)) {
-						// 获取进程名
-						return getProcessName(pid)
+					socketPattern := fmt.Sprintf("socket:[%s]", inode)
+					if strings.Contains(target, socketPattern) {
+						processName := getProcessName(pid)
+						logger.Debug("getProcessByInode: 找到匹配进程 PID=%s, 进程名=%s, socket=%s", pid, processName, target)
+						return processName
 					}
 				}
 			}
 		}
 	}
 
+	logger.Debug("getProcessByInode: 未找到匹配inode %s 的进程，共检查了 %d 个进程", inode, checkedProcesses)
 	return "unknown"
 }
 
 // getProcessName 获取进程名
 func getProcessName(pid string) string {
+	logger.Debug("getProcessName: 开始获取PID %s 的进程名", pid)
+
 	// 读取进程状态文件
 	statusPath := fmt.Sprintf("/proc/%s/status", pid)
 	if content, err := os.ReadFile(statusPath); err == nil {
@@ -110,16 +132,24 @@ func getProcessName(pid string) string {
 		for _, line := range lines {
 			if strings.HasPrefix(line, "Name:") {
 				name := strings.TrimSpace(strings.TrimPrefix(line, "Name:"))
+				logger.Debug("getProcessName: 从status文件获取到进程名: %s", name)
 				return name
 			}
 		}
+	} else {
+		logger.Debug("getProcessName: 无法读取status文件 %s: %v", statusPath, err)
 	}
 
 	// 如果无法读取status文件，尝试读取comm文件
 	commPath := fmt.Sprintf("/proc/%s/comm", pid)
 	if content, err := os.ReadFile(commPath); err == nil {
-		return strings.TrimSpace(string(content))
+		name := strings.TrimSpace(string(content))
+		logger.Debug("getProcessName: 从comm文件获取到进程名: %s", name)
+		return name
+	} else {
+		logger.Debug("getProcessName: 无法读取comm文件 %s: %v", commPath, err)
 	}
 
+	logger.Debug("getProcessName: 无法获取PID %s 的进程名", pid)
 	return "unknown"
 }
