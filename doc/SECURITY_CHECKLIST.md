@@ -7,7 +7,7 @@
 ### 1. 账户管理
 - [ ] **创建cnet账户** - `linux_security_account_info{username="cnet"}`
 - [ ] **禁用root直接SSH登录** - `linux_security_sshd_config_info{key="PermitRootLogin", value="no"}`
-- [ ] **移除不必要账户** - `linux_security_unnecessary_accounts_count == 0`
+- [ ] **移除不必要账户** - 通过 `linux_security_account_info` 检查账户信息
 
 ### 2. 密码策略
 - [ ] **密码最大有效期90天** - `linux_security_login_defs_info{key="PASS_MAX_DAYS", value="num"} <= 90`
@@ -17,15 +17,15 @@
 ### 3. 系统安全配置
 - [ ] **SELinux强制模式** - `linux_security_selinux_config{key="SELINUX", value="enforcing"}`
 - [ ] **防火墙启用** - `linux_security_firewall_enabled == 1`
-- [ ] **TCP Wrappers配置** - `linux_security_tcp_wrappers_configured == 1`
+- [ ] **TCP Wrappers配置** - `linux_security_hosts_options_info{file="hosts.deny", service="ALL", host="ALL", action="deny"}`
 
 ### 4. 系统服务
-- [ ] **禁用X Window** - `linux_security_xwindow_enabled == 0`
-- [ ] **系统运行级别正确** - `linux_security_system_target_correct == 1`
-- [ ] **无运行中的不必要服务** - `linux_security_unnecessary_services_count == 0`
+- [ ] **禁用X Window** - `linux_security_services_info{service_name="xwindow", is_running="false"}`
+- [ ] **系统运行级别正确** - `linux_security_system_target_info{current_target="multi-user.target"}`
+- [ ] **无运行中的不必要服务** - `count(linux_security_services_info{service_name=~"nfs|cups|bluetooth|avahi-daemon|rpcbind|postfix", is_running="true"}) == 0`
 
 ### 5. 系统维护
-- [ ] **6个月内系统补丁** - `linux_security_last_patch_days <= 180`
+- [ ] **系统补丁信息** - `linux_security_patch_info{last_patch_time!="unknown"}`
 
 ## Prometheus告警规则
 
@@ -97,7 +97,7 @@ groups:
 
   # 系统配置告警
   - alert: XWindowEnabled
-    expr: linux_security_xwindow_enabled == 1
+    expr: linux_security_services_info{service_name="xwindow", is_running="true"}
     for: 0m
     labels:
       severity: info
@@ -107,7 +107,7 @@ groups:
       description: "X Window System should be disabled on servers"
 
   - alert: UnnecessaryServicesRunning
-    expr: linux_security_unnecessary_services_count > 0
+    expr: count(linux_security_services_info{service_name=~"nfs|cups|bluetooth|avahi-daemon|rpcbind|postfix", is_running="true"}) > 0
     for: 0m
     labels:
       severity: warning
@@ -117,7 +117,7 @@ groups:
       description: "{{ $value }} unnecessary services are currently running"
 
   - alert: UnnecessaryAccountsPresent
-    expr: linux_security_unnecessary_accounts_count > 0
+    expr: count(linux_security_account_info{username=~"games|news|uucp|proxy|www-data|backup|list|irc|gnats|nobody|libuuid|syslog|messagebus|landscape|sshd|ubuntu|debian|systemd-timesync|systemd-network|systemd-resolve|systemd-bus-proxy|_apt|lxd|dnsmasq|libvirt-qemu|libvirt-dnsmasq|Debian-exim|statd|tcpdump|tss|geoclue|pulse|rtkit|saned|usbmux|colord|avahi|cups-pk-helper|speech-dispatcher|whoopsie|kernoops|hplip|saned|pulse|rtkit|usbmux|colord|avahi|speech-dispatcher|whoopsie|kernoops|hplip"}) > 0
     for: 0m
     labels:
       severity: info
@@ -127,15 +127,15 @@ groups:
       description: "{{ $value }} unnecessary accounts found in the system"
 
   # 系统维护告警
-  - alert: SystemPatchOutdated
-    expr: linux_security_last_patch_days > 180
+  - alert: SystemPatchInfoUnknown
+    expr: linux_security_patch_info{last_patch_time="unknown"}
     for: 0m
     labels:
       severity: warning
       category: maintenance
     annotations:
-      summary: "System patches are outdated"
-      description: "Last system patch was {{ $value }} days ago, should be within 180 days"
+      summary: "System patch information is unknown"
+      description: "Cannot determine last patch time for {{ $labels.package_type }} system"
 ```
 
 ## 合规性评分
@@ -150,9 +150,9 @@ groups:
   (linux_security_firewall_enabled == 1) * 15 +
   ((linux_security_login_defs_info{key="PASS_MIN_LEN", value="num"} >= 10) or vector(0)) * 10 +
   ((linux_security_login_defs_info{key="PASS_MAX_DAYS", value="num"} <= 90) or vector(0)) * 10 +
-  (linux_security_xwindow_enabled == 0) * 5 +
-  (linux_security_unnecessary_services_count == 0) * 10 +
-  (linux_security_tcp_wrappers_configured == 1) * 5
+  (linux_security_services_info{service_name="xwindow", is_running="false"} or vector(0)) * 5 +
+  (count(linux_security_services_info{service_name=~"nfs|cups|bluetooth|avahi-daemon|rpcbind|postfix", is_running="true"}) == 0) * 10 +
+  (linux_security_hosts_options_info{file="hosts.deny", service="ALL", host="ALL", action="deny"} or vector(0)) * 5
 )
 ```
 
