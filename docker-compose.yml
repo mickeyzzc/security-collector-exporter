@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  security-exporter:
+    build: .
+    image: security-exporter:latest
+    container_name: security-exporter
+    restart: unless-stopped
+    ports:
+      - "9102:9102"
+    privileged: true  # 需要特权模式访问系统文件
+    volumes:
+      # 挂载系统文件以进行安全检查
+      - /etc/passwd:/etc/passwd:ro
+      - /etc/group:/etc/group:ro
+      - /etc/ssh/sshd_config:/etc/ssh/sshd_config:ro
+      - /etc/login.defs:/etc/login.defs:ro
+      - /etc/selinux/config:/etc/selinux/config:ro
+      - /etc/hosts.deny:/etc/hosts.deny:ro
+      - /etc/hosts.allow:/etc/hosts.allow:ro
+      - /etc/sudoers:/etc/sudoers:ro
+      - /etc/systemd/system:/etc/systemd/system:ro
+      - /etc/init.d:/etc/init.d:ro
+      - /etc/rc.d:/etc/rc.d:ro
+      - /etc/rc.local:/etc/rc.local:ro
+      - /etc/inittab:/etc/inittab:ro
+      - /var/lib/rpm:/var/lib/rpm:ro
+      - /var/lib/dpkg:/var/lib/dpkg:ro
+      - /var/lib/pacman:/var/lib/pacman:ro
+      - /var/log:/var/log:ro
+      - /proc:/proc:ro
+      - /sys:/sys:ro
+      - /run:/run:ro
+    environment:
+      - TZ=Asia/Shanghai
+    command: [
+      "--web.listen-address=:9102",
+      "--web.telemetry-path=/metrics",
+      "--log.level=info",
+      "--log.format=logfmt"
+    ]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9102/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    driver: bridge

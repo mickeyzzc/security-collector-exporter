@@ -2,7 +2,7 @@
 
 ## 构建和运行
 
-### 1. 构建项目
+### 1. 本地构建
 
 ```bash
 # 克隆项目
@@ -11,11 +11,7 @@ cd Security-Collector
 
 # 构建
 go build -o security-exporter ./cmd/security-exporter
-```
 
-### 2. 运行服务
-
-```bash
 # 基本运行
 ./security-exporter
 
@@ -24,6 +20,58 @@ go build -o security-exporter ./cmd/security-exporter
   --web.listen-address=:9102 \
   --web.telemetry-path=/metrics \
   --collector.port-states="LISTEN,ESTABLISHED"
+```
+
+### 2. Docker 部署
+
+#### 使用 Makefile
+
+```bash
+# 构建 Docker 镜像
+make docker-build
+
+# 运行 Docker 容器
+make docker-run
+
+# 停止容器
+make docker-stop
+
+# 清理镜像
+make docker-clean
+```
+
+#### 使用 docker-compose
+
+```bash
+# 构建并启动服务
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
+
+# 重新构建并启动
+docker-compose up -d --build
+```
+
+#### 手动 Docker 命令
+
+```bash
+# 构建镜像
+docker build -t security-exporter:latest .
+
+# 运行容器
+docker run -d \
+  --name security-exporter \
+  --privileged \
+  -p 9102:9102 \
+  -v /etc/passwd:/etc/passwd:ro \
+  -v /etc/group:/etc/group:ro \
+  -v /proc:/proc:ro \
+  -v /sys:/sys:ro \
+  security-exporter:latest
 ```
 
 ### 3. 验证运行

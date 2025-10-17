@@ -6,12 +6,32 @@ Linux安全信息收集器，用于Prometheus监控系统安全状态。
 
 ### 构建和运行
 
+#### 本地构建
+
 ```bash
 # 构建
 go build -o security-exporter ./cmd/security-exporter
 
 # 运行
 ./security-exporter --web.listen-address=:9102 --web.telemetry-path=/metrics
+```
+
+#### Docker 部署
+
+```bash
+# 构建 Docker 镜像
+make docker-build
+
+# 运行 Docker 容器
+make docker-run
+
+# 或使用 docker-compose
+docker-compose up -d
+
+# 停止容器
+make docker-stop
+# 或
+docker-compose down
 ```
 
 ### 配置参数
@@ -80,6 +100,9 @@ Security-Collector/
 ├── go.mod
 ├── go.sum
 ├── Makefile
+├── Dockerfile
+├── docker-compose.yml
+├── .dockerignore
 └── README.md
 ```
 
