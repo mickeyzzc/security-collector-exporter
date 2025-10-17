@@ -2,9 +2,7 @@ package system
 
 import (
 	"bufio"
-	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -108,19 +106,81 @@ func getGroupName(gid string) (string, error) {
 
 // getUserGroups 获取用户的所有组
 func getUserGroups(username string) ([]string, error) {
-	output, err := exec.Command("groups", username).Output()
+	var groups []string
+
+	// 1. 从 /etc/group 文件中查找用户所属的组
+	file, err := os.Open("/etc/group")
 	if err != nil {
 		return nil, err
 	}
+	defer file.Close()
 
-	// 输出格式: username : group1 group2 group3
-	line := strings.TrimSpace(string(output))
-	parts := strings.Split(line, " : ")
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid groups output")
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// 解析group行: groupname:password:gid:members
+		parts := strings.Split(line, ":")
+		if len(parts) >= 4 {
+			groupName := parts[0]
+			members := parts[3]
+
+			// 检查用户是否在该组的成员列表中
+			if members != "" {
+				memberList := strings.Split(members, ",")
+				for _, member := range memberList {
+					if strings.TrimSpace(member) == username {
+						groups = append(groups, groupName)
+						break
+					}
+				}
+			}
+		}
 	}
 
-	groups := strings.Fields(parts[1])
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	// 2. 从 /etc/passwd 文件中获取用户的主组
+	passwdFile, err := os.Open("/etc/passwd")
+	if err != nil {
+		return groups, nil // 如果无法读取passwd文件，返回已找到的组
+	}
+	defer passwdFile.Close()
+
+	passwdScanner := bufio.NewScanner(passwdFile)
+	for passwdScanner.Scan() {
+		line := passwdScanner.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// 解析passwd行: username:password:uid:gid:gecos:home:shell
+		parts := strings.Split(line, ":")
+		if len(parts) >= 4 && parts[0] == username {
+			// 获取主组名
+			primaryGroup, err := getGroupName(parts[3])
+			if err == nil && primaryGroup != "unknown" {
+				// 检查主组是否已经在列表中
+				found := false
+				for _, group := range groups {
+					if group == primaryGroup {
+						found = true
+						break
+					}
+				}
+				if !found {
+					groups = append(groups, primaryGroup)
+				}
+			}
+			break
+		}
+	}
+
 	return groups, nil
 }
 

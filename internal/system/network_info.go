@@ -3,41 +3,178 @@ package system
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 )
 
 // CheckFirewallStatus 检查防火墙状态
 func CheckFirewallStatus() (bool, error) {
-	// 检查firewalld
-	output, err := exec.Command("systemctl", "is-active", "firewalld").Output()
-	if err == nil && strings.TrimSpace(string(output)) == "active" {
+	// 1. 检查firewalld服务状态
+	if isFirewalldActive() {
 		return true, nil
 	}
 
-	// 检查ufw (Ubuntu)
-	output, err = exec.Command("systemctl", "is-active", "ufw").Output()
-	if err == nil && strings.TrimSpace(string(output)) == "active" {
+	// 2. 检查ufw服务状态 (Ubuntu)
+	if isUfwActive() {
 		return true, nil
 	}
 
-	// 检查iptables服务
-	output, err = exec.Command("systemctl", "is-active", "iptables").Output()
-	if err == nil && strings.TrimSpace(string(output)) == "active" {
+	// 3. 检查iptables服务状态
+	if isIptablesActive() {
 		return true, nil
 	}
 
-	// 直接检查iptables规则
-	output, err = exec.Command("iptables", "-L").Output()
-	if err == nil && strings.Contains(string(output), "Chain INPUT") {
-		// 简单判断是否有非默认规则
-		if strings.Count(string(output), "ACCEPT") > 3 {
-			return true, nil
-		}
+	// 4. 检查iptables规则文件
+	if hasIptablesRules() {
+		return true, nil
+	}
+
+	// 5. 检查nftables
+	if isNftablesActive() {
+		return true, nil
 	}
 
 	return false, nil
+}
+
+// isFirewalldActive 检查firewalld是否激活
+func isFirewalldActive() bool {
+	// 检查systemd服务状态文件
+	serviceStatePath := "/run/systemd/system/firewalld.service"
+	if _, err := os.Stat(serviceStatePath); err == nil {
+		if content, err := os.ReadFile(serviceStatePath); err == nil {
+			return strings.Contains(string(content), "ActiveState=active")
+		}
+	}
+
+	// 检查firewalld进程
+	return isProcessRunning("firewalld")
+}
+
+// isUfwActive 检查ufw是否激活
+func isUfwActive() bool {
+	// 检查systemd服务状态文件
+	serviceStatePath := "/run/systemd/system/ufw.service"
+	if _, err := os.Stat(serviceStatePath); err == nil {
+		if content, err := os.ReadFile(serviceStatePath); err == nil {
+			return strings.Contains(string(content), "ActiveState=active")
+		}
+	}
+
+	// 检查ufw状态文件
+	ufwStatusPath := "/var/lib/ufw/ufw-not-booted"
+	if _, err := os.Stat(ufwStatusPath); os.IsNotExist(err) {
+		// 如果状态文件不存在，说明ufw可能已启动
+		return true
+	}
+
+	// 检查ufw进程
+	return isProcessRunning("ufw")
+}
+
+// isIptablesActive 检查iptables服务是否激活
+func isIptablesActive() bool {
+	// 检查systemd服务状态文件
+	serviceStatePath := "/run/systemd/system/iptables.service"
+	if _, err := os.Stat(serviceStatePath); err == nil {
+		if content, err := os.ReadFile(serviceStatePath); err == nil {
+			return strings.Contains(string(content), "ActiveState=active")
+		}
+	}
+
+	// 检查iptables进程
+	return isProcessRunning("iptables")
+}
+
+// isNftablesActive 检查nftables是否激活
+func isNftablesActive() bool {
+	// 检查systemd服务状态文件
+	serviceStatePath := "/run/systemd/system/nftables.service"
+	if _, err := os.Stat(serviceStatePath); err == nil {
+		if content, err := os.ReadFile(serviceStatePath); err == nil {
+			return strings.Contains(string(content), "ActiveState=active")
+		}
+	}
+
+	// 检查nftables进程
+	return isProcessRunning("nftables")
+}
+
+// hasIptablesRules 检查是否有iptables规则
+func hasIptablesRules() bool {
+	// 检查iptables规则文件
+	iptablesPaths := []string{
+		"/etc/sysconfig/iptables",      // CentOS/RHEL
+		"/etc/iptables/rules.v4",       // Debian/Ubuntu
+		"/etc/iptables.rules",          // 其他发行版
+		"/var/lib/iptables/rules-save", // 某些系统
+	}
+
+	for _, path := range iptablesPaths {
+		if _, err := os.Stat(path); err == nil {
+			// 文件存在，检查内容
+			if content, err := os.ReadFile(path); err == nil {
+				contentStr := string(content)
+				// 检查是否有实际的规则（不只是注释和空行）
+				lines := strings.Split(contentStr, "\n")
+				ruleCount := 0
+				for _, line := range lines {
+					line = strings.TrimSpace(line)
+					if line != "" && !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "*") && !strings.HasPrefix(line, ":") && !strings.HasPrefix(line, "COMMIT") {
+						ruleCount++
+					}
+				}
+				if ruleCount > 0 {
+					return true
+				}
+			}
+		}
+	}
+
+	// 检查iptables模块是否加载
+	modulesPath := "/proc/modules"
+	if content, err := os.ReadFile(modulesPath); err == nil {
+		contentStr := string(content)
+		if strings.Contains(contentStr, "iptable_filter") || strings.Contains(contentStr, "iptable_nat") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isProcessRunning 检查进程是否在运行
+func isProcessRunning(processName string) bool {
+	// 读取/proc目录获取所有进程
+	procDir := "/proc"
+	entries, err := os.ReadDir(procDir)
+	if err != nil {
+		return false
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// 检查是否为数字目录（进程ID）
+		pid := entry.Name()
+		if _, err := strconv.Atoi(pid); err != nil {
+			continue
+		}
+
+		// 读取进程命令行
+		cmdlinePath := fmt.Sprintf("/proc/%s/cmdline", pid)
+		if content, err := os.ReadFile(cmdlinePath); err == nil {
+			cmdline := string(content)
+			// 检查命令行是否包含进程名
+			if strings.Contains(cmdline, processName) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // PortUseInfo 端口使用信息结构
