@@ -16,8 +16,9 @@
 
 ### 3. 系统安全配置
 - [ ] **SELinux强制模式** - `linux_security_selinux_config{key="SELINUX", value="enforcing"}`
-- [ ] **防火墙启用** - `linux_security_firewall_enabled == 1`
+- [ ] **防火墙启用** - `linux_security_firewall_enabled{firewall_type!="none"} == 1`
 - [ ] **TCP Wrappers配置** - `linux_security_hosts_options_info{file="hosts.deny", service="ALL", host="ALL", action="deny"}`
+- [ ] **端口使用监控** - `linux_security_ports_use_info{process!="unknown"}`
 
 ### 4. 系统服务
 - [ ] **禁用X Window** - `linux_security_services_info{service_name="xwindow", is_running="false"}`
@@ -65,7 +66,7 @@ groups:
       description: "SELinux should be enabled for better security"
 
   - alert: FirewallDisabled
-    expr: linux_security_firewall_enabled == 0
+    expr: linux_security_firewall_enabled{firewall_type="none"} == 1
     for: 0m
     labels:
       severity: warning
@@ -73,6 +74,16 @@ groups:
     annotations:
       summary: "Firewall is disabled"
       description: "System firewall should be enabled to protect against network attacks"
+
+  - alert: UnknownProcessUsingPort
+    expr: linux_security_ports_use_info{process="unknown"} == 1
+    for: 0m
+    labels:
+      severity: warning
+      category: security
+    annotations:
+      summary: "Unknown process using port"
+      description: "Port {{ $labels.port }} is being used by an unknown process"
 
   # 密码策略告警
   - alert: PasswordMaxDaysTooLong
@@ -163,6 +174,57 @@ groups:
 - **每日检查**: 密码策略、系统补丁状态
 - **每周检查**: 完整合规性评估
 
+## 新增查询示例
+
+### 防火墙类型检查
+
+```promql
+# 检查特定防火墙类型
+linux_security_firewall_enabled{firewall_type="firewalld"}
+linux_security_firewall_enabled{firewall_type="ufw"}
+linux_security_firewall_enabled{firewall_type="iptables"}
+
+# 统计启用的防火墙数量
+sum(linux_security_firewall_enabled)
+```
+
+### 端口进程监控
+
+```promql
+# 查询特定进程的端口使用
+linux_security_ports_use_info{process="sshd"}
+linux_security_ports_use_info{process="nginx"}
+linux_security_ports_use_info{process="mysql"}
+
+# 查询特定端口的进程
+linux_security_ports_use_info{port="22"}
+linux_security_ports_use_info{port="80"}
+linux_security_ports_use_info{port="443"}
+
+# 统计各进程的端口数量
+count by (process) (linux_security_ports_use_info)
+
+# 查询未知进程占用的端口
+linux_security_ports_use_info{process="unknown"}
+```
+
+### 服务状态监控
+
+```promql
+# 查询特定服务的状态
+linux_security_services_info{service_name="sshd"}
+linux_security_services_info{service_name="nginx"}
+
+# 查询运行中的服务
+linux_security_services_info{is_running="true"}
+
+# 查询启用的服务
+linux_security_services_info{is_enabled="true"}
+
+# 统计各类型服务的数量
+count by (service_type) (linux_security_services_info)
+```
+
 ## 修复建议
 
 当发现安全配置问题时，请参考原始安全标准文档进行修复：
@@ -173,3 +235,4 @@ groups:
 4. **防火墙问题**: 配置iptables或nftables规则
 5. **服务问题**: 禁用不必要的服务和X Window
 6. **补丁问题**: 运行系统更新命令
+7. **端口监控**: 识别并管理未知进程占用的端口

@@ -16,25 +16,70 @@ go build -o security-exporter ./cmd/security-exporter
 
 ### 配置参数
 
+#### 基本配置
+
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--web.listen-address` | `:9102` | Web服务监听地址 |
 | `--web.telemetry-path` | `/metrics` | Metrics暴露路径 |
+
+#### 端口状态配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
 | `--collector.port-states` | `LISTEN` | 要采集的TCP端口状态，多个状态用逗号分隔 |
+
+#### 日志配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--log.level` | `info` | 日志级别：debug, info, warn, error |
+| `--log.format` | `logfmt` | 日志格式：logfmt, json |
+
+#### 使用示例
+
+```bash
+# 基本运行
+./security-exporter
+
+# 自定义端口状态
+./security-exporter --collector.port-states="LISTEN,ESTABLISHED"
+
+# 开启调试模式
+./security-exporter --log.level=debug
+
+# 使用JSON日志格式
+./security-exporter --log.level=info --log.format=json
+```
 
 ## 项目结构
 
 ```
 Security-Collector/
 ├── cmd/security-exporter/     # 主程序入口
+│   └── main.go
 ├── internal/                  # 内部包
 │   ├── collector/            # Prometheus收集器
-│   ├── system/               # 系统检查功能
-│   └── config/               # 配置管理
+│   │   └── security_collector.go
+│   └── system/               # 系统检查功能
+│       ├── account_info.go   # 账户信息检查
+│       ├── config_info.go    # 配置文件检查
+│       ├── network_info.go   # 网络信息检查
+│       ├── os_info.go        # 操作系统信息
+│       ├── service_info.go   # 服务信息检查
+│       ├── system_info.go    # 系统信息检查
+│       └── utils.go          # 工具函数
+├── pkg/                      # 公共包
+│   ├── config/              # 配置管理
+│   │   └── config.go
+│   └── logger/              # 日志管理
+│       └── logger.go
 ├── doc/                      # 文档目录
+│   ├── QUICK_START.md       # 快速开始指南
 │   └── SECURITY_CHECKLIST.md # 安全标准检查清单
 ├── go.mod
 ├── go.sum
+├── Makefile
 └── README.md
 ```
 
@@ -52,8 +97,8 @@ Security-Collector/
 
 ### 系统安全配置
 - `linux_security_selinux_config`: SELinux配置信息
-- `linux_security_firewall_enabled`: 防火墙是否启用
-- `linux_security_ports_use_info`: 系统端口使用信息
+- `linux_security_firewall_enabled`: 防火墙是否启用（包含防火墙类型）
+- `linux_security_ports_use_info`: 系统端口使用信息（包含进程名）
 - `linux_security_hosts_options_info`: hosts.deny和hosts.allow配置信息
 
 ### 系统服务检查
@@ -92,7 +137,10 @@ linux_security_sshd_config_info{key="PermitRootLogin", value="no"}
 linux_security_selinux_config{key="SELINUX", value="enforcing"}
 
 # 检查防火墙状态
-linux_security_firewall_enabled == 1
+linux_security_firewall_enabled{firewall_type="firewalld"} == 1
+
+# 检查端口使用情况
+linux_security_ports_use_info{process="sshd", port="22"}
 
 # 检查密码策略
 linux_security_login_defs_info{key="PASS_MIN_LEN", value="num"} >= 10

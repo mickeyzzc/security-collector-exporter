@@ -51,6 +51,13 @@ curl http://localhost:9102/metrics | grep linux_security_os_version_info
 |------|--------|------|
 | `--collector.port-states` | `LISTEN` | 要采集的TCP端口状态，多个状态用逗号分隔 |
 
+### 日志配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--log.level` | `info` | 日志级别：debug, info, warn, error |
+| `--log.format` | `logfmt` | 日志格式：logfmt, json |
+
 #### 可用的TCP状态
 
 - `LISTEN` - 监听状态
@@ -76,6 +83,12 @@ curl http://localhost:9102/metrics | grep linux_security_os_version_info
 
 # 采集所有TCP状态
 ./security-exporter --collector.port-states="LISTEN,ESTABLISHED,SYN_SENT,SYN_RECV,FIN_WAIT1,FIN_WAIT2,TIME_WAIT,CLOSE,CLOSE_WAIT,LAST_ACK,CLOSING"
+
+# 开启调试模式
+./security-exporter --log.level=debug
+
+# 使用JSON日志格式
+./security-exporter --log.level=info --log.format=json
 ```
 
 ## Prometheus配置
@@ -128,7 +141,10 @@ linux_security_sshd_config_info{key="PermitRootLogin", value="no"}
 linux_security_selinux_config{key="SELINUX", value="enforcing"}
 
 # 检查防火墙状态
-linux_security_firewall_enabled == 1
+linux_security_firewall_enabled{firewall_type="firewalld"} == 1
+
+# 检查端口使用情况
+linux_security_ports_use_info{process="sshd", port="22"}
 
 # 检查密码策略
 linux_security_login_defs_info{key="PASS_MIN_LEN", value="num"} >= 10
@@ -167,6 +183,12 @@ linux_security_login_defs_info{key="PASS_MIN_LEN", value="num"} >= 10
 ```bash
 # 启用详细日志
 ./security-exporter --log.level=debug
+
+# 查看详细的进程匹配日志
+./security-exporter --log.level=debug 2>&1 | grep "getProcessByInode"
+
+# 使用JSON格式的调试日志
+./security-exporter --log.level=debug --log.format=json
 ```
 
 ## 下一步
