@@ -74,12 +74,12 @@ func NewSecurityCollector(cfg *config.Config) *SecurityCollector {
 		firewallEnabled: prometheus.NewDesc(
 			"linux_security_firewall_enabled",
 			"防火墙是否启用 (1=启用, 0=禁用)",
-			nil, nil,
+			[]string{"firewall_type"}, nil,
 		),
 		portsUseInfo: prometheus.NewDesc(
 			"linux_security_ports_use_info",
 			"系统端口使用信息",
-			[]string{"protocol", "ip", "port", "state"}, nil,
+			[]string{"protocol", "ip", "port", "state", "process"}, nil,
 		),
 		servicesInfo: prometheus.NewDesc(
 			"linux_security_services_info",
@@ -219,12 +219,13 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	// 检查防火墙状态
-	firewallEnabled, err := system.CheckFirewallStatus()
+	firewallInfo, err := system.CheckFirewallStatus()
 	if err == nil {
 		ch <- prometheus.MustNewConstMetric(
 			c.firewallEnabled,
 			prometheus.GaugeValue,
-			system.BoolToFloat64(firewallEnabled),
+			system.BoolToFloat64(firewallInfo.Enabled),
+			firewallInfo.Type,
 		)
 	}
 
@@ -240,6 +241,7 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 				port.IP,
 				port.Port,
 				port.State,
+				port.Process,
 			)
 		}
 	}

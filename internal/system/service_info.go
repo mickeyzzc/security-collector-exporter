@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -18,19 +17,35 @@ type ServiceInfo struct {
 
 // GetAllServicesInfo 获取所有服务信息
 func GetAllServicesInfo() ([]ServiceInfo, error) {
-	var services []ServiceInfo
+	// 使用map去重，确保每个服务名只出现一次
+	serviceMap := make(map[string]ServiceInfo)
 
-	// 1. 获取X Window相关服务信息
+	// 1. 获取所有systemd服务
+	systemdServices := getAllSystemdServices()
+	for _, service := range systemdServices {
+		serviceMap[service.Name] = service
+	}
+
+	// 2. 获取所有传统init服务
+	initServices := getAllInitServices()
+	for _, service := range initServices {
+		// 如果systemd服务已存在，优先使用systemd服务信息
+		if _, exists := serviceMap[service.Name]; !exists {
+			serviceMap[service.Name] = service
+		}
+	}
+
+	// 3. 获取X Window服务信息（特殊处理，覆盖同名服务）
 	xwindowServices := getXWindowServices()
-	services = append(services, xwindowServices...)
+	for _, service := range xwindowServices {
+		serviceMap[service.Name] = service
+	}
 
-	// 2. 获取不必要服务信息
-	unnecessaryServices := getUnnecessaryServices()
-	services = append(services, unnecessaryServices...)
-
-	// 3. 获取其他重要服务信息
-	otherServices := getOtherImportantServices()
-	services = append(services, otherServices...)
+	// 将map转换为slice
+	var services []ServiceInfo
+	for _, service := range serviceMap {
+		services = append(services, service)
+	}
 
 	return services, nil
 }
@@ -154,112 +169,169 @@ func getXWindowServices() []ServiceInfo {
 	return services
 }
 
-// getUnnecessaryServices 获取不必要服务信息
-func getUnnecessaryServices() []ServiceInfo {
-	var services []ServiceInfo
+// getAllSystemdServices 获取所有systemd服务信息
+func getAllSystemdServices() []ServiceInfo {
+	// 使用map去重，确保每个服务名只出现一次
+	serviceMap := make(map[string]ServiceInfo)
 
-	unnecessaryServiceNames := []string{
-		"nfs", "nfs-server", "cups", "bluetooth",
-		"avahi-daemon", "rpcbind", "postfix",
+	// 扫描systemd服务目录（按优先级顺序）
+	systemdPaths := []string{
+		"/etc/systemd/system",     // 最高优先级：用户自定义服务
+		"/usr/lib/systemd/system", // 中等优先级：系统安装的服务
+		"/lib/systemd/system",     // 最低优先级：基础系统服务
 	}
 
-	for _, serviceName := range unnecessaryServiceNames {
-		serviceInfo := ServiceInfo{
-			Name:        serviceName,
-			IsRunning:   false,
-			ServiceType: "unknown",
-			IsEnabled:   false,
+	for _, systemdPath := range systemdPaths {
+		entries, err := os.ReadDir(systemdPath)
+		if err != nil {
+			continue
 		}
 
-		// 检查systemd服务
-		if isSystemdServiceRunning(serviceName) {
-			serviceInfo.IsRunning = true
-			serviceInfo.ServiceType = "systemd"
-		}
-
-		// 检查是否启用
-		if isSystemdServiceEnabled(serviceName) {
-			serviceInfo.IsEnabled = true
-			if serviceInfo.ServiceType == "unknown" {
-				serviceInfo.ServiceType = "systemd"
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
 			}
-		}
 
-		// 检查传统init服务
-		if isInitServiceRunning(serviceName) {
-			serviceInfo.IsRunning = true
-			serviceInfo.ServiceType = "init"
-		}
-
-		// 检查进程是否在运行
-		if isServiceRunning(serviceName) {
-			serviceInfo.IsRunning = true
-			if serviceInfo.ServiceType == "unknown" {
-				serviceInfo.ServiceType = "process"
+			name := entry.Name()
+			// 只处理.service文件
+			if !strings.HasSuffix(name, ".service") {
+				continue
 			}
-		}
 
-		services = append(services, serviceInfo)
+			// 移除.service后缀
+			serviceName := strings.TrimSuffix(name, ".service")
+
+			// 如果服务已存在，跳过（保持高优先级目录的服务信息）
+			if _, exists := serviceMap[serviceName]; exists {
+				continue
+			}
+
+			serviceInfo := ServiceInfo{
+				Name:        serviceName,
+				IsRunning:   false,
+				ServiceType: "systemd",
+				IsEnabled:   false,
+			}
+
+			// 检查服务是否运行
+			if isSystemdServiceRunning(serviceName) {
+				serviceInfo.IsRunning = true
+			}
+
+			// 检查服务是否启用
+			if isSystemdServiceEnabled(serviceName) {
+				serviceInfo.IsEnabled = true
+			}
+
+			serviceMap[serviceName] = serviceInfo
+		}
+	}
+
+	// 将map转换为slice
+	var services []ServiceInfo
+	for _, service := range serviceMap {
+		services = append(services, service)
 	}
 
 	return services
 }
 
-// getOtherImportantServices 获取其他重要服务信息
-func getOtherImportantServices() []ServiceInfo {
-	var services []ServiceInfo
+// getAllInitServices 获取所有传统init服务信息
+func getAllInitServices() []ServiceInfo {
+	// 使用map去重，确保每个服务名只出现一次
+	serviceMap := make(map[string]ServiceInfo)
 
-	importantServices := []string{
-		"sshd", "firewalld", "iptables", "nftables",
-		"selinux", "auditd", "rsyslog", "systemd-logind",
+	// 扫描init服务目录（按优先级顺序）
+	initPaths := []string{
+		"/etc/init.d",      // 最高优先级：用户自定义服务
+		"/etc/rc.d/init.d", // 最低优先级：系统基础服务
 	}
 
-	for _, serviceName := range importantServices {
-		serviceInfo := ServiceInfo{
-			Name:        serviceName,
-			IsRunning:   false,
-			ServiceType: "unknown",
-			IsEnabled:   false,
+	for _, initPath := range initPaths {
+		entries, err := os.ReadDir(initPath)
+		if err != nil {
+			continue
 		}
 
-		// 检查systemd服务
-		if isSystemdServiceRunning(serviceName) {
-			serviceInfo.IsRunning = true
-			serviceInfo.ServiceType = "systemd"
-		}
-
-		// 检查是否启用
-		if isSystemdServiceEnabled(serviceName) {
-			serviceInfo.IsEnabled = true
-			if serviceInfo.ServiceType == "unknown" {
-				serviceInfo.ServiceType = "systemd"
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
 			}
-		}
 
-		// 检查进程是否在运行
-		if isServiceRunning(serviceName) {
-			serviceInfo.IsRunning = true
-			if serviceInfo.ServiceType == "unknown" {
-				serviceInfo.ServiceType = "process"
+			serviceName := entry.Name()
+
+			// 如果服务已存在，跳过（保持高优先级目录的服务信息）
+			if _, exists := serviceMap[serviceName]; exists {
+				continue
 			}
-		}
 
-		services = append(services, serviceInfo)
+			serviceInfo := ServiceInfo{
+				Name:        serviceName,
+				IsRunning:   false,
+				ServiceType: "init",
+				IsEnabled:   false,
+			}
+
+			// 检查服务是否运行
+			if isInitServiceRunning(serviceName) {
+				serviceInfo.IsRunning = true
+			}
+
+			// 检查服务是否启用（通过运行级别链接）
+			if isInitServiceEnabled(serviceName) {
+				serviceInfo.IsEnabled = true
+			}
+
+			serviceMap[serviceName] = serviceInfo
+		}
+	}
+
+	// 将map转换为slice
+	var services []ServiceInfo
+	for _, service := range serviceMap {
+		services = append(services, service)
 	}
 
 	return services
+}
+
+// isInitServiceEnabled 检查传统init服务是否启用
+func isInitServiceEnabled(serviceName string) bool {
+	// 检查运行级别链接
+	for _, level := range []string{"2", "3", "4", "5"} {
+		rcPath := fmt.Sprintf("/etc/rc%s.d/S*%s", level, serviceName)
+		matches, err := filepath.Glob(rcPath)
+		if err == nil && len(matches) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // isSystemdServiceRunning 检查systemd服务是否运行
 func isSystemdServiceRunning(serviceName string) bool {
-	// 检查systemd服务状态文件
+	// 1. 检查systemd服务状态文件
 	serviceStatePath := fmt.Sprintf("/run/systemd/system/%s.service", serviceName)
 	if _, err := os.Stat(serviceStatePath); err == nil {
 		if content, err := os.ReadFile(serviceStatePath); err == nil {
-			return strings.Contains(string(content), "ActiveState=active")
+			if strings.Contains(string(content), "ActiveState=active") {
+				return true
+			}
 		}
 	}
-	return false
+
+	// 2. 检查systemd服务状态文件（备用路径）
+	serviceStatePath2 := fmt.Sprintf("/run/systemd/transient/%s.service", serviceName)
+	if _, err := os.Stat(serviceStatePath2); err == nil {
+		if content, err := os.ReadFile(serviceStatePath2); err == nil {
+			if strings.Contains(string(content), "ActiveState=active") {
+				return true
+			}
+		}
+	}
+
+	// 3. 从/proc中检查进程是否在运行
+	return isProcessRunning(serviceName)
 }
 
 // isSystemdServiceEnabled 检查systemd服务是否启用
@@ -299,39 +371,5 @@ func isInitServiceRunning(serviceName string) bool {
 			}
 		}
 	}
-	return false
-}
-
-// isServiceRunning 检查服务进程是否在运行
-func isServiceRunning(serviceName string) bool {
-	// 读取/proc目录获取所有进程
-	procDir := "/proc"
-	entries, err := os.ReadDir(procDir)
-	if err != nil {
-		return false
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		// 检查是否为数字目录（进程ID）
-		pid := entry.Name()
-		if _, err := strconv.Atoi(pid); err != nil {
-			continue
-		}
-
-		// 读取进程命令行
-		cmdlinePath := fmt.Sprintf("/proc/%s/cmdline", pid)
-		if content, err := os.ReadFile(cmdlinePath); err == nil {
-			cmdline := string(content)
-			// 检查命令行是否包含服务名
-			if strings.Contains(cmdline, serviceName) {
-				return true
-			}
-		}
-	}
-
 	return false
 }

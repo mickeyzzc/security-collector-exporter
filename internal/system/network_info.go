@@ -7,34 +7,40 @@ import (
 	"strings"
 )
 
+// FirewallInfo 防火墙信息结构
+type FirewallInfo struct {
+	Enabled bool   // 是否启用
+	Type    string // 防火墙类型
+}
+
 // CheckFirewallStatus 检查防火墙状态
-func CheckFirewallStatus() (bool, error) {
+func CheckFirewallStatus() (FirewallInfo, error) {
 	// 1. 检查firewalld服务状态
 	if isFirewalldActive() {
-		return true, nil
+		return FirewallInfo{Enabled: true, Type: "firewalld"}, nil
 	}
 
 	// 2. 检查ufw服务状态 (Ubuntu)
 	if isUfwActive() {
-		return true, nil
+		return FirewallInfo{Enabled: true, Type: "ufw"}, nil
 	}
 
 	// 3. 检查iptables服务状态
 	if isIptablesActive() {
-		return true, nil
+		return FirewallInfo{Enabled: true, Type: "iptables"}, nil
 	}
 
 	// 4. 检查iptables规则文件
 	if hasIptablesRules() {
-		return true, nil
+		return FirewallInfo{Enabled: true, Type: "iptables"}, nil
 	}
 
 	// 5. 检查nftables
 	if isNftablesActive() {
-		return true, nil
+		return FirewallInfo{Enabled: true, Type: "nftables"}, nil
 	}
 
-	return false, nil
+	return FirewallInfo{Enabled: false, Type: "none"}, nil
 }
 
 // isFirewalldActive 检查firewalld是否激活
@@ -143,46 +149,13 @@ func hasIptablesRules() bool {
 	return false
 }
 
-// isProcessRunning 检查进程是否在运行
-func isProcessRunning(processName string) bool {
-	// 读取/proc目录获取所有进程
-	procDir := "/proc"
-	entries, err := os.ReadDir(procDir)
-	if err != nil {
-		return false
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		// 检查是否为数字目录（进程ID）
-		pid := entry.Name()
-		if _, err := strconv.Atoi(pid); err != nil {
-			continue
-		}
-
-		// 读取进程命令行
-		cmdlinePath := fmt.Sprintf("/proc/%s/cmdline", pid)
-		if content, err := os.ReadFile(cmdlinePath); err == nil {
-			cmdline := string(content)
-			// 检查命令行是否包含进程名
-			if strings.Contains(cmdline, processName) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
 // PortUseInfo 端口使用信息结构
 type PortUseInfo struct {
 	Protocol string
 	IP       string
 	Port     string
 	State    string
+	Process  string // 进程名
 }
 
 // GetPortsUseInfo 获取端口使用信息
@@ -284,11 +257,15 @@ func getPortsFromProcNet(filePath, protocol string, allowedStates []string) ([]P
 			continue
 		}
 
+		// 获取进程信息
+		processName := getProcessByInode(line)
+
 		ports = append(ports, PortUseInfo{
 			Protocol: protocol,
 			IP:       ip,
 			Port:     port,
 			State:    state,
+			Process:  processName,
 		})
 	}
 
