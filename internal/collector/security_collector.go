@@ -55,7 +55,7 @@ func NewSecurityCollector(cfg *config.Config) *SecurityCollector {
 			"linux_security_os_version_info",
 			"Linux操作系统版本信息",
 			[]string{
-				"pretty_name", "name", "version", "version_id", "id", "id_like",
+				"pretty_name", "os_name", "version", "version_id", "id", "id_like",
 				"home_url", "bug_report_url", "support_url", "variant", "variant_id",
 				"cpe_name", "build_id", "image_id", "image_version", "redhat_release",
 			}, nil,

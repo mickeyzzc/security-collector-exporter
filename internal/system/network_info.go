@@ -423,30 +423,34 @@ func containsState(allowedStates []string, state string) bool {
 
 // parseHexIP 解析十六进制IP地址
 func parseHexIP(hexIP string) string {
-	// 移除前导零
-	hexIP = strings.TrimLeft(hexIP, "0")
-	if hexIP == "" {
-		hexIP = "0"
-	}
+	// /proc/net/tcp 中的IP地址是小端序（little-endian）格式
+	// 例如：0100007F 表示 127.0.0.1
 
-	// 转换十六进制到整数
-	ipInt, err := strconv.ParseInt(hexIP, 16, 64)
-	if err != nil {
-		return ""
-	}
-
-	// 检查是否为IPv6
+	// 检查是否为IPv6（长度超过8个字符）
 	if len(hexIP) > 8 {
-		// IPv6地址，简化处理
-		return fmt.Sprintf("::%d", ipInt)
+		// IPv6地址的处理
+		// IPv6在/proc/net/tcp6中也是小端序，但处理较复杂
+		// 这里提供基本的IPv6支持
+		if hexIP == "00000000000000000000000000000000" {
+			return "::"
+		}
+		// 简化的IPv6显示
+		return fmt.Sprintf("IPv6:%s", hexIP[:8])
 	}
 
-	// IPv4地址
+	// 补齐到8位
+	for len(hexIP) < 8 {
+		hexIP = "0" + hexIP
+	}
+
+	// IPv4地址 - 小端序解析
+	// 将十六进制字符串按字节分组：0100007F -> 01 00 00 7F
+	// 但要按小端序读取：7F 00 00 01 -> 127.0.0.1
 	ip := fmt.Sprintf("%d.%d.%d.%d",
-		(ipInt>>24)&0xFF,
-		(ipInt>>16)&0xFF,
-		(ipInt>>8)&0xFF,
-		ipInt&0xFF,
+		parseHexByte(hexIP[6:8]), // 最后一个字节是第一个IP段
+		parseHexByte(hexIP[4:6]),
+		parseHexByte(hexIP[2:4]),
+		parseHexByte(hexIP[0:2]), // 第一个字节是最后一个IP段
 	)
 
 	// 特殊处理0.0.0.0
@@ -455,6 +459,15 @@ func parseHexIP(hexIP string) string {
 	}
 
 	return ip
+}
+
+// parseHexByte 将两位十六进制字符串转换为整数
+func parseHexByte(hexByte string) int {
+	val, err := strconv.ParseInt(hexByte, 16, 64)
+	if err != nil {
+		return 0
+	}
+	return int(val)
 }
 
 // parseHexPort 解析十六进制端口号
