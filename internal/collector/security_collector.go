@@ -19,6 +19,14 @@ type SecurityCollector struct {
 	accountInfo    *prometheus.Desc
 	sshdConfigInfo *prometheus.Desc
 
+	// Shadow 指标
+	lastPasswordChange *prometheus.Desc
+	passwordMaxDays    *prometheus.Desc
+	passwordMinDays    *prometheus.Desc
+	passwordWarnDays   *prometheus.Desc
+	passwordInactive   *prometheus.Desc
+	accountExpire      *prometheus.Desc
+
 	// 密码策略指标
 	loginDefsInfo *prometheus.Desc
 
@@ -30,8 +38,9 @@ type SecurityCollector struct {
 	portsUseInfo    *prometheus.Desc
 
 	// 组件状态指标
-	servicesInfo *prometheus.Desc
-	patchInfo    *prometheus.Desc
+	servicesInfo  *prometheus.Desc
+	lastPatchTime *prometheus.Desc
+	packageCount  *prometheus.Desc
 
 	// 新增安全标准检查指标
 	hostsOptionsInfo *prometheus.Desc
@@ -54,42 +63,79 @@ func NewSecurityCollector(cfg *config.Config) *SecurityCollector {
 		accountInfo: prometheus.NewDesc(
 			"linux_security_account_info",
 			"系统账户信息",
-			[]string{"username", "home_dir", "shell", "primary_group", "groups", "has_sudo"}, nil,
+			[]string{"username", "home_dir", "shell", "primary_group", "other_groups", "has_sudo"}, nil,
+		),
+		lastPasswordChange: prometheus.NewDesc(
+			"linux_security_last_password_change",
+			"最后密码修改时间（天数）",
+			[]string{"username"}, nil,
+		),
+		passwordMaxDays: prometheus.NewDesc(
+			"linux_security_password_max_days",
+			"密码最大有效期（天数）",
+			[]string{"username"}, nil,
+		),
+		passwordMinDays: prometheus.NewDesc(
+			"linux_security_password_min_days",
+			"密码最小有效期（天数）",
+			[]string{"username"}, nil,
+		),
+		passwordWarnDays: prometheus.NewDesc(
+			"linux_security_password_warn_days",
+			"密码警告天数",
+			[]string{"username"}, nil,
+		),
+		passwordInactive: prometheus.NewDesc(
+			"linux_security_password_inactive",
+			"密码不活跃天数",
+			[]string{"username"}, nil,
+		),
+		accountExpire: prometheus.NewDesc(
+			"linux_security_account_expire",
+			"账户过期时间（天数）",
+			[]string{"username"}, nil,
 		),
 		sshdConfigInfo: prometheus.NewDesc(
 			"linux_security_sshd_config_info",
 			"SSH服务配置信息",
-			[]string{"key", "value"}, nil,
+			[]string{"info_key", "info_value"}, nil,
 		),
 		loginDefsInfo: prometheus.NewDesc(
 			"linux_security_login_defs_info",
 			"login.defs配置信息",
-			[]string{"key", "value"}, nil,
+			[]string{"info_key", "info_value"}, nil,
 		),
 		selinuxConfig: prometheus.NewDesc(
 			"linux_security_selinux_config",
 			"SELinux配置信息",
-			[]string{"key", "value"}, nil,
+			[]string{"info_key", "info_value"}, nil,
 		),
 		firewallEnabled: prometheus.NewDesc(
 			"linux_security_firewall_enabled",
 			"防火墙是否启用 (1=启用, 0=禁用)",
-			[]string{"firewall_type"}, nil,
+			[]string{"firewall_type", "is_running"}, nil,
 		),
 		portsUseInfo: prometheus.NewDesc(
 			"linux_security_ports_use_info",
 			"系统端口使用信息",
-			[]string{"protocol", "ip", "port", "state", "process"}, nil,
+			[]string{"protocol", "local_ip", "local_port", "state", "process"}, nil,
 		),
 		servicesInfo: prometheus.NewDesc(
 			"linux_security_services_info",
 			"系统服务信息",
 			[]string{"service_name", "is_running", "service_type", "is_enabled"}, nil,
 		),
-		patchInfo: prometheus.NewDesc(
-			"linux_security_patch_info",
-			"系统补丁信息",
-			[]string{"last_patch_time", "package_type", "package_count"}, nil,
+		lastPatchTime: prometheus.NewDesc(
+			"linux_security_last_patch_time",
+			"最后一次补丁时间",
+			[]string{"package_type"},
+			nil,
+		),
+		packageCount: prometheus.NewDesc(
+			"linux_security_package_count",
+			"已安装包数量",
+			[]string{"package_type"},
+			nil,
 		),
 		hostsOptionsInfo: prometheus.NewDesc(
 			"linux_security_hosts_options_info",
@@ -108,13 +154,20 @@ func NewSecurityCollector(cfg *config.Config) *SecurityCollector {
 func (c *SecurityCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.osVersionInfo
 	ch <- c.accountInfo
+	ch <- c.lastPasswordChange
+	ch <- c.passwordMaxDays
+	ch <- c.passwordMinDays
+	ch <- c.passwordWarnDays
+	ch <- c.passwordInactive
+	ch <- c.accountExpire
 	ch <- c.sshdConfigInfo
 	ch <- c.loginDefsInfo
 	ch <- c.selinuxConfig
 	ch <- c.firewallEnabled
 	ch <- c.portsUseInfo
 	ch <- c.servicesInfo
-	ch <- c.patchInfo
+	ch <- c.lastPatchTime
+	ch <- c.packageCount
 	ch <- c.hostsOptionsInfo
 	ch <- c.systemTargetInfo
 }
@@ -164,6 +217,70 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 				account.PrimaryGroup,
 				groupsStr,
 				fmt.Sprintf("%t", account.HasSudo),
+			)
+		}
+	}
+
+	// 收集拆分的shadow指标
+	shadowMetrics, err := system.GetAllShadowMetrics()
+	if err == nil {
+		// 最后密码修改时间
+		for _, metric := range shadowMetrics.LastPasswordChange {
+			ch <- prometheus.MustNewConstMetric(
+				c.lastPasswordChange,
+				prometheus.GaugeValue,
+				metric.Value,
+				metric.Username,
+			)
+		}
+
+		// 密码最大有效期
+		for _, metric := range shadowMetrics.PasswordMaxDays {
+			ch <- prometheus.MustNewConstMetric(
+				c.passwordMaxDays,
+				prometheus.GaugeValue,
+				metric.Value,
+				metric.Username,
+			)
+		}
+
+		// 密码最小有效期
+		for _, metric := range shadowMetrics.PasswordMinDays {
+			ch <- prometheus.MustNewConstMetric(
+				c.passwordMinDays,
+				prometheus.GaugeValue,
+				metric.Value,
+				metric.Username,
+			)
+		}
+
+		// 密码警告天数
+		for _, metric := range shadowMetrics.PasswordWarnDays {
+			ch <- prometheus.MustNewConstMetric(
+				c.passwordWarnDays,
+				prometheus.GaugeValue,
+				metric.Value,
+				metric.Username,
+			)
+		}
+
+		// 密码不活跃天数
+		for _, metric := range shadowMetrics.PasswordInactive {
+			ch <- prometheus.MustNewConstMetric(
+				c.passwordInactive,
+				prometheus.GaugeValue,
+				metric.Value,
+				metric.Username,
+			)
+		}
+
+		// 账户过期时间
+		for _, metric := range shadowMetrics.AccountExpire {
+			ch <- prometheus.MustNewConstMetric(
+				c.accountExpire,
+				prometheus.GaugeValue,
+				metric.Value,
+				metric.Username,
 			)
 		}
 	}
@@ -226,6 +343,7 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			prometheus.GaugeValue,
 			system.BoolToFloat64(firewallInfo.Enabled),
 			firewallInfo.Type,
+			fmt.Sprintf("%t", firewallInfo.IsRunning),
 		)
 	}
 
@@ -262,16 +380,25 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	// 获取补丁信息
-	patchInfo, err := system.GetPatchInfo()
+	// 获取补丁时间信息
+	patchTimeInfo, err := system.GetPatchTimeInfo()
 	if err == nil {
 		ch <- prometheus.MustNewConstMetric(
-			c.patchInfo,
+			c.lastPatchTime,
 			prometheus.GaugeValue,
-			1, // 每个补丁信息条目值为1
-			patchInfo.LastPatchTime,
-			patchInfo.PackageType,
-			fmt.Sprintf("%d", patchInfo.PackageCount),
+			1, // 每个补丁时间信息条目值为1
+			patchTimeInfo.PackageType,
+		)
+	}
+
+	// 获取包数量信息
+	packageCountInfo, err := system.GetPackageCountInfo()
+	if err == nil {
+		ch <- prometheus.MustNewConstMetric(
+			c.packageCount,
+			prometheus.GaugeValue,
+			float64(packageCountInfo.PackageCount),
+			packageCountInfo.PackageType,
 		)
 	}
 

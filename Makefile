@@ -16,7 +16,7 @@ all: fmt lint test build
 build:
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
-	@go build -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
+	@go build -ldflags "-X security-exporter/pkg/config.Version=$(shell git describe --tags --always --dirty) -X security-exporter/pkg/config.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ) -X security-exporter/pkg/config.GitCommit=$(shell git rev-parse HEAD) -X security-exporter/pkg/config.GoVersion=$(shell go version | cut -d' ' -f3)" -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
 	@echo "Build completed: $(BUILD_DIR)/$(BINARY_NAME)"
 
 # 运行
@@ -54,7 +54,7 @@ deps:
 build-linux:
 	@echo "Building for Linux..."
 	@mkdir -p $(BUILD_DIR)
-	@GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 $(MAIN_PATH)
+	@GOOS=linux GOARCH=amd64 go build -ldflags "-X security-exporter/pkg/config.Version=$(shell git describe --tags --always --dirty) -X security-exporter/pkg/config.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ) -X security-exporter/pkg/config.GitCommit=$(shell git rev-parse HEAD) -X security-exporter/pkg/config.GoVersion=$(shell go version | cut -d' ' -f3)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 $(MAIN_PATH)
 
 # Docker 构建
 docker-build:

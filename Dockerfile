@@ -1,6 +1,10 @@
 # 多阶段构建
 FROM golang:1.21-alpine AS builder
 
+# 构建参数
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+
 # 设置工作目录
 WORKDIR /app
 
@@ -17,7 +21,12 @@ RUN go mod download
 COPY . .
 
 # 构建应用
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o security-exporter ./cmd/security-exporter
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags "-X security-exporter/pkg/config.Version=${VERSION:-dev} \
+              -X security-exporter/pkg/config.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+              -X security-exporter/pkg/config.GitCommit=${GIT_COMMIT:-unknown} \
+              -X security-exporter/pkg/config.GoVersion=$(go version)" \
+    -a -installsuffix cgo -o security-exporter ./cmd/security-exporter
 
 # 运行阶段
 FROM alpine:latest

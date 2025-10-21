@@ -11,111 +11,201 @@ import (
 
 // FirewallInfo 防火墙信息结构
 type FirewallInfo struct {
-	Enabled bool   // 是否启用
-	Type    string // 防火墙类型
+	Enabled   bool   // 是否启用
+	Type      string // 防火墙类型
+	IsRunning bool   // 是否正在运行
 }
 
 // CheckFirewallStatus 检查防火墙状态
 func CheckFirewallStatus() (FirewallInfo, error) {
+	logger.Debug("CheckFirewallStatus: 开始检查防火墙状态")
+
 	// 1. 检查firewalld服务状态
+	logger.Debug("CheckFirewallStatus: 检查 firewalld")
 	if isFirewalldActive() {
-		return FirewallInfo{Enabled: true, Type: "firewalld"}, nil
+		logger.Debug("CheckFirewallStatus: 检测到 firewalld 已启用")
+		isRunning := isProcessRunning("firewalld")
+		logger.Debug("CheckFirewallStatus: firewalld 进程运行状态: %t", isRunning)
+		return FirewallInfo{Enabled: true, Type: "firewalld", IsRunning: isRunning}, nil
 	}
+	logger.Debug("CheckFirewallStatus: firewalld 未启用")
 
 	// 2. 检查ufw服务状态 (Ubuntu)
+	logger.Debug("CheckFirewallStatus: 检查 ufw")
 	if isUfwActive() {
-		return FirewallInfo{Enabled: true, Type: "ufw"}, nil
+		logger.Debug("CheckFirewallStatus: 检测到 ufw 已启用")
+		isRunning := isProcessRunning("ufw")
+		logger.Debug("CheckFirewallStatus: ufw 进程运行状态: %t", isRunning)
+		return FirewallInfo{Enabled: true, Type: "ufw", IsRunning: isRunning}, nil
 	}
+	logger.Debug("CheckFirewallStatus: ufw 未启用")
 
 	// 3. 检查iptables服务状态
+	logger.Debug("CheckFirewallStatus: 检查 iptables 服务")
 	if isIptablesActive() {
-		return FirewallInfo{Enabled: true, Type: "iptables"}, nil
+		logger.Debug("CheckFirewallStatus: 检测到 iptables 服务已启用")
+		isRunning := isProcessRunning("iptables")
+		logger.Debug("CheckFirewallStatus: iptables 进程运行状态: %t", isRunning)
+		return FirewallInfo{Enabled: true, Type: "iptables", IsRunning: isRunning}, nil
 	}
+	logger.Debug("CheckFirewallStatus: iptables 服务未启用")
 
 	// 4. 检查iptables规则文件
+	logger.Debug("CheckFirewallStatus: 检查 iptables 规则文件")
 	if hasIptablesRules() {
-		return FirewallInfo{Enabled: true, Type: "iptables"}, nil
+		logger.Debug("CheckFirewallStatus: 检测到 iptables 规则文件")
+		// 有规则文件，检查进程是否运行
+		isRunning := isProcessRunning("iptables")
+		logger.Debug("CheckFirewallStatus: iptables 进程运行状态: %t", isRunning)
+		return FirewallInfo{Enabled: true, Type: "iptables", IsRunning: isRunning}, nil
 	}
+	logger.Debug("CheckFirewallStatus: iptables 规则文件不存在")
 
 	// 5. 检查nftables
+	logger.Debug("CheckFirewallStatus: 检查 nftables")
 	if isNftablesActive() {
-		return FirewallInfo{Enabled: true, Type: "nftables"}, nil
+		logger.Debug("CheckFirewallStatus: 检测到 nftables 已启用")
+		isRunning := isProcessRunning("nftables")
+		logger.Debug("CheckFirewallStatus: nftables 进程运行状态: %t", isRunning)
+		return FirewallInfo{Enabled: true, Type: "nftables", IsRunning: isRunning}, nil
 	}
+	logger.Debug("CheckFirewallStatus: nftables 未启用")
 
-	return FirewallInfo{Enabled: false, Type: "none"}, nil
+	logger.Debug("CheckFirewallStatus: 未检测到任何防火墙")
+	return FirewallInfo{Enabled: false, Type: "none", IsRunning: false}, nil
 }
 
 // isFirewalldActive 检查firewalld是否激活
 func isFirewalldActive() bool {
+	logger.Debug("isFirewalldActive: 开始检查 firewalld")
+
 	// 检查systemd服务状态文件
 	serviceStatePath := "/run/systemd/system/firewalld.service"
+	logger.Debug("isFirewalldActive: 检查服务状态文件 %s", serviceStatePath)
 	if _, err := os.Stat(serviceStatePath); err == nil {
+		logger.Debug("isFirewalldActive: 服务状态文件存在")
 		if content, err := os.ReadFile(serviceStatePath); err == nil {
-			return strings.Contains(string(content), "ActiveState=active")
+			isActive := strings.Contains(string(content), "ActiveState=active")
+			logger.Debug("isFirewalldActive: 服务状态文件包含 ActiveState=active: %t", isActive)
+			return isActive
+		} else {
+			logger.Debug("isFirewalldActive: 无法读取服务状态文件: %v", err)
 		}
+	} else {
+		logger.Debug("isFirewalldActive: 服务状态文件不存在: %v", err)
 	}
 
 	// 检查firewalld进程
-	return isProcessRunning("firewalld")
+	logger.Debug("isFirewalldActive: 检查 firewalld 进程")
+	isRunning := isProcessRunning("firewalld")
+	logger.Debug("isFirewalldActive: firewalld 进程运行状态: %t", isRunning)
+	return isRunning
 }
 
 // isUfwActive 检查ufw是否激活
 func isUfwActive() bool {
+	logger.Debug("isUfwActive: 开始检查 ufw")
+
 	// 检查systemd服务状态文件
 	serviceStatePath := "/run/systemd/system/ufw.service"
+	logger.Debug("isUfwActive: 检查服务状态文件 %s", serviceStatePath)
 	if _, err := os.Stat(serviceStatePath); err == nil {
+		logger.Debug("isUfwActive: 服务状态文件存在")
 		if content, err := os.ReadFile(serviceStatePath); err == nil {
-			return strings.Contains(string(content), "ActiveState=active")
+			isActive := strings.Contains(string(content), "ActiveState=active")
+			logger.Debug("isUfwActive: 服务状态文件包含 ActiveState=active: %t", isActive)
+			return isActive
+		} else {
+			logger.Debug("isUfwActive: 无法读取服务状态文件: %v", err)
 		}
+	} else {
+		logger.Debug("isUfwActive: 服务状态文件不存在: %v", err)
 	}
 
 	// 检查ufw状态文件
 	// 先检查/var/lib/ufw目录是否存在
 	ufwDir := "/var/lib/ufw"
+	logger.Debug("isUfwActive: 检查 ufw 目录 %s", ufwDir)
 	if _, err := os.Stat(ufwDir); os.IsNotExist(err) {
 		// 如果目录不存在，直接跳过文件状态检查
+		logger.Debug("isUfwActive: ufw 目录不存在")
 	} else {
+		logger.Debug("isUfwActive: ufw 目录存在，检查状态文件")
 		ufwStatusPath := "/var/lib/ufw/ufw-not-booted"
 		if _, err := os.Stat(ufwStatusPath); os.IsNotExist(err) {
 			// 如果状态文件不存在，说明ufw可能已启动
+			logger.Debug("isUfwActive: ufw-not-booted 文件不存在，说明 ufw 可能已启动")
 			return true
+		} else {
+			logger.Debug("isUfwActive: ufw-not-booted 文件存在，说明 ufw 未启动")
 		}
 	}
 
 	// 检查ufw进程
-	return isProcessRunning("ufw")
+	logger.Debug("isUfwActive: 检查 ufw 进程")
+	isRunning := isProcessRunning("ufw")
+	logger.Debug("isUfwActive: ufw 进程运行状态: %t", isRunning)
+	return isRunning
 }
 
 // isIptablesActive 检查iptables服务是否激活
 func isIptablesActive() bool {
+	logger.Debug("isIptablesActive: 开始检查 iptables 服务")
+
 	// 检查systemd服务状态文件
 	serviceStatePath := "/run/systemd/system/iptables.service"
+	logger.Debug("isIptablesActive: 检查服务状态文件 %s", serviceStatePath)
 	if _, err := os.Stat(serviceStatePath); err == nil {
+		logger.Debug("isIptablesActive: 服务状态文件存在")
 		if content, err := os.ReadFile(serviceStatePath); err == nil {
-			return strings.Contains(string(content), "ActiveState=active")
+			isActive := strings.Contains(string(content), "ActiveState=active")
+			logger.Debug("isIptablesActive: 服务状态文件包含 ActiveState=active: %t", isActive)
+			return isActive
+		} else {
+			logger.Debug("isIptablesActive: 无法读取服务状态文件: %v", err)
 		}
+	} else {
+		logger.Debug("isIptablesActive: 服务状态文件不存在: %v", err)
 	}
 
 	// 检查iptables进程
-	return isProcessRunning("iptables")
+	logger.Debug("isIptablesActive: 检查 iptables 进程")
+	isRunning := isProcessRunning("iptables")
+	logger.Debug("isIptablesActive: iptables 进程运行状态: %t", isRunning)
+	return isRunning
 }
 
 // isNftablesActive 检查nftables是否激活
 func isNftablesActive() bool {
+	logger.Debug("isNftablesActive: 开始检查 nftables")
+
 	// 检查systemd服务状态文件
 	serviceStatePath := "/run/systemd/system/nftables.service"
+	logger.Debug("isNftablesActive: 检查服务状态文件 %s", serviceStatePath)
 	if _, err := os.Stat(serviceStatePath); err == nil {
+		logger.Debug("isNftablesActive: 服务状态文件存在")
 		if content, err := os.ReadFile(serviceStatePath); err == nil {
-			return strings.Contains(string(content), "ActiveState=active")
+			isActive := strings.Contains(string(content), "ActiveState=active")
+			logger.Debug("isNftablesActive: 服务状态文件包含 ActiveState=active: %t", isActive)
+			return isActive
+		} else {
+			logger.Debug("isNftablesActive: 无法读取服务状态文件: %v", err)
 		}
+	} else {
+		logger.Debug("isNftablesActive: 服务状态文件不存在: %v", err)
 	}
 
 	// 检查nftables进程
-	return isProcessRunning("nftables")
+	logger.Debug("isNftablesActive: 检查 nftables 进程")
+	isRunning := isProcessRunning("nftables")
+	logger.Debug("isNftablesActive: nftables 进程运行状态: %t", isRunning)
+	return isRunning
 }
 
 // hasIptablesRules 检查是否有iptables规则
 func hasIptablesRules() bool {
+	logger.Debug("hasIptablesRules: 开始检查 iptables 规则文件")
+
 	// 检查iptables规则文件
 	iptablesPaths := []string{
 		"/etc/sysconfig/iptables",      // CentOS/RHEL
@@ -125,7 +215,9 @@ func hasIptablesRules() bool {
 	}
 
 	for _, path := range iptablesPaths {
+		logger.Debug("hasIptablesRules: 检查规则文件 %s", path)
 		if _, err := os.Stat(path); err == nil {
+			logger.Debug("hasIptablesRules: 规则文件存在: %s", path)
 			// 文件存在，检查内容
 			if content, err := os.ReadFile(path); err == nil {
 				contentStr := string(content)
@@ -138,22 +230,36 @@ func hasIptablesRules() bool {
 						ruleCount++
 					}
 				}
+				logger.Debug("hasIptablesRules: 规则文件 %s 包含 %d 条规则", path, ruleCount)
 				if ruleCount > 0 {
+					logger.Debug("hasIptablesRules: 发现有效规则，iptables 已配置")
 					return true
 				}
+			} else {
+				logger.Debug("hasIptablesRules: 无法读取规则文件 %s: %v", path, err)
 			}
+		} else {
+			logger.Debug("hasIptablesRules: 规则文件不存在: %s", path)
 		}
 	}
 
 	// 检查iptables模块是否加载
 	modulesPath := "/proc/modules"
+	logger.Debug("hasIptablesRules: 检查 iptables 模块是否加载 %s", modulesPath)
 	if content, err := os.ReadFile(modulesPath); err == nil {
 		contentStr := string(content)
-		if strings.Contains(contentStr, "iptable_filter") || strings.Contains(contentStr, "iptable_nat") {
+		hasFilter := strings.Contains(contentStr, "iptable_filter")
+		hasNat := strings.Contains(contentStr, "iptable_nat")
+		logger.Debug("hasIptablesRules: iptable_filter 模块加载: %t, iptable_nat 模块加载: %t", hasFilter, hasNat)
+		if hasFilter || hasNat {
+			logger.Debug("hasIptablesRules: iptables 模块已加载")
 			return true
 		}
+	} else {
+		logger.Debug("hasIptablesRules: 无法读取 /proc/modules: %v", err)
 	}
 
+	logger.Debug("hasIptablesRules: 未发现 iptables 规则或模块")
 	return false
 }
 

@@ -3,6 +3,7 @@ package system
 import (
 	"bufio"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -228,4 +229,184 @@ func checkSudoPermission(username string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// ShadowInfo shadow文件信息结构
+type ShadowInfo struct {
+	Username           string
+	LastPasswordChange string
+	PasswordMaxDays    string
+	PasswordMinDays    string
+	PasswordWarnDays   string
+	PasswordInactive   string
+	AccountExpire      string
+}
+
+// ShadowMetrics 拆分的shadow指标结构
+type ShadowMetrics struct {
+	LastPasswordChange []ShadowMetric
+	PasswordMaxDays    []ShadowMetric
+	PasswordMinDays    []ShadowMetric
+	PasswordWarnDays   []ShadowMetric
+	PasswordInactive   []ShadowMetric
+	AccountExpire      []ShadowMetric
+}
+
+// ShadowMetric 单个shadow指标
+type ShadowMetric struct {
+	Username string
+	Value    float64
+}
+
+// GetAllShadowInfo 获取所有用户的shadow信息
+func GetAllShadowInfo() ([]ShadowInfo, error) {
+	var shadowInfos []ShadowInfo
+
+	// 读取shadow文件
+	file, err := os.Open("/etc/shadow")
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// 解析shadow行: username:password:lastchange:min:max:warn:inactive:expire:reserved
+		parts := strings.Split(line, ":")
+		if len(parts) < 9 {
+			continue
+		}
+
+		username := parts[0]
+		// 跳过密码字段（索引1），只获取其他信息
+		shadowInfo := ShadowInfo{
+			Username:           username,
+			LastPasswordChange: parts[2], // 最后密码修改时间
+			PasswordMinDays:    parts[3], // 密码最小有效期
+			PasswordMaxDays:    parts[4], // 密码最大有效期
+			PasswordWarnDays:   parts[5], // 密码警告天数
+			PasswordInactive:   parts[6], // 密码不活跃天数
+			AccountExpire:      parts[7], // 账户过期时间
+		}
+
+		shadowInfos = append(shadowInfos, shadowInfo)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return shadowInfos, nil
+}
+
+// GetAllShadowMetrics 获取拆分的shadow指标
+func GetAllShadowMetrics() (*ShadowMetrics, error) {
+	metrics := &ShadowMetrics{
+		LastPasswordChange: []ShadowMetric{},
+		PasswordMaxDays:    []ShadowMetric{},
+		PasswordMinDays:    []ShadowMetric{},
+		PasswordWarnDays:   []ShadowMetric{},
+		PasswordInactive:   []ShadowMetric{},
+		AccountExpire:      []ShadowMetric{},
+	}
+
+	// 读取shadow文件
+	file, err := os.Open("/etc/shadow")
+	if err != nil {
+		return metrics, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// 解析shadow行: username:password:lastchange:min:max:warn:inactive:expire:reserved
+		parts := strings.Split(line, ":")
+		if len(parts) < 9 {
+			continue
+		}
+
+		username := parts[0]
+
+		// 解析各个字段的数值
+		lastChange := parseShadowValue(parts[2])
+		maxDays := parseShadowValue(parts[4])
+		minDays := parseShadowValue(parts[3])
+		warnDays := parseShadowValue(parts[5])
+		inactive := parseShadowValue(parts[6])
+		expire := parseShadowValue(parts[7])
+
+		// 添加到对应的指标中
+		if lastChange >= 0 {
+			metrics.LastPasswordChange = append(metrics.LastPasswordChange, ShadowMetric{
+				Username: username,
+				Value:    lastChange,
+			})
+		}
+
+		if maxDays >= 0 {
+			metrics.PasswordMaxDays = append(metrics.PasswordMaxDays, ShadowMetric{
+				Username: username,
+				Value:    maxDays,
+			})
+		}
+
+		if minDays >= 0 {
+			metrics.PasswordMinDays = append(metrics.PasswordMinDays, ShadowMetric{
+				Username: username,
+				Value:    minDays,
+			})
+		}
+
+		if warnDays >= 0 {
+			metrics.PasswordWarnDays = append(metrics.PasswordWarnDays, ShadowMetric{
+				Username: username,
+				Value:    warnDays,
+			})
+		}
+
+		if inactive >= 0 {
+			metrics.PasswordInactive = append(metrics.PasswordInactive, ShadowMetric{
+				Username: username,
+				Value:    inactive,
+			})
+		}
+
+		if expire >= 0 {
+			metrics.AccountExpire = append(metrics.AccountExpire, ShadowMetric{
+				Username: username,
+				Value:    expire,
+			})
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return metrics, err
+	}
+
+	return metrics, nil
+}
+
+// parseShadowValue 解析shadow字段值
+func parseShadowValue(value string) float64 {
+	// 空值或特殊值返回-1表示无效
+	if value == "" || value == "0" || value == "99999" {
+		return -1
+	}
+
+	// 尝试转换为数字
+	if val, err := strconv.ParseFloat(value, 64); err == nil {
+		return val
+	}
+
+	return -1
 }

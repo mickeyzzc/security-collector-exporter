@@ -15,6 +15,9 @@ go build -o security-exporter ./cmd/security-exporter
 # 基本运行
 ./security-exporter
 
+# 查看版本信息
+./security-exporter --version
+
 # 自定义配置
 ./security-exporter \
   --web.listen-address=:9102 \
@@ -172,8 +175,16 @@ systemctl restart prometheus
 # 操作系统版本
 linux_security_os_version_info
 
-# 系统账户信息
+# 系统账户信息（passwd文件信息）
 linux_security_account_info
+
+# 密码策略指标
+linux_security_last_password_change
+linux_security_password_max_days
+linux_security_password_min_days
+linux_security_password_warn_days
+linux_security_password_inactive
+linux_security_account_expire
 
 # SSH配置
 linux_security_sshd_config_info
@@ -183,19 +194,19 @@ linux_security_sshd_config_info
 
 ```promql
 # 检查SSH root登录是否禁用
-linux_security_sshd_config_info{key="PermitRootLogin", value="no"}
+linux_security_sshd_config_info{info_key="PermitRootLogin", info_value="no"}
 
 # 检查SELinux是否启用
-linux_security_selinux_config{key="SELINUX", value="enforcing"}
+linux_security_selinux_config{info_key="SELINUX", info_value="enforcing"}
 
-# 检查防火墙状态
-linux_security_firewall_enabled{firewall_type="firewalld"} == 1
+# 检查防火墙状态（已启用且正在运行）
+linux_security_firewall_enabled{firewall_type="firewalld", is_running="true"} == 1
 
 # 检查端口使用情况
 linux_security_ports_use_info{process="sshd", port="22"}
 
 # 检查密码策略
-linux_security_login_defs_info{key="PASS_MIN_LEN", value="num"} >= 10
+linux_security_login_defs_info{info_key="PASS_MIN_LEN", info_value="num"} >= 10
 ```
 
 ## 故障排除

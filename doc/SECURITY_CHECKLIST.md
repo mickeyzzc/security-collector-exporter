@@ -6,17 +6,19 @@
 
 ### 1. 账户管理
 - [ ] **创建cnet账户** - `linux_security_account_info{username="cnet"}`
-- [ ] **禁用root直接SSH登录** - `linux_security_sshd_config_info{key="PermitRootLogin", value="no"}`
+- [ ] **禁用root直接SSH登录** - `linux_security_sshd_config_info{info_key="PermitRootLogin", info_value="no"}`
 - [ ] **移除不必要账户** - 通过 `linux_security_account_info` 检查账户信息
+- [ ] **检查账户密码策略** - 通过 `linux_security_password_max_days` 检查密码有效期
 
 ### 2. 密码策略
-- [ ] **密码最大有效期90天** - `linux_security_login_defs_info{key="PASS_MAX_DAYS", value="num"} <= 90`
-- [ ] **密码最小长度10位** - `linux_security_login_defs_info{key="PASS_MIN_LEN", value="num"} >= 10`
-- [ ] **密码警告天数7天** - `linux_security_login_defs_info{key="PASS_WARN_AGE", value="num"} == 7`
+- [ ] **密码最大有效期90天** - `linux_security_login_defs_info{info_key="PASS_MAX_DAYS", info_value="num"} <= 90`
+- [ ] **密码最小长度10位** - `linux_security_login_defs_info{info_key="PASS_MIN_LEN", info_value="num"} >= 10`
+- [ ] **密码警告天数7天** - `linux_security_login_defs_info{info_key="PASS_WARN_AGE", info_value="num"} == 7`
 
 ### 3. 系统安全配置
-- [ ] **SELinux强制模式** - `linux_security_selinux_config{key="SELINUX", value="enforcing"}`
+- [ ] **SELinux强制模式** - `linux_security_selinux_config{info_key="SELINUX", info_value="enforcing"}`
 - [ ] **防火墙启用** - `linux_security_firewall_enabled{firewall_type!="none"} == 1`
+- [ ] **防火墙正在运行** - `linux_security_firewall_enabled{firewall_type!="none", is_running="true"} == 1`
 - [ ] **TCP Wrappers配置** - `linux_security_hosts_options_info{file="hosts.deny", service="ALL", host="ALL", action="deny"}`
 - [ ] **端口使用监控** - `linux_security_ports_use_info{process!="unknown"}`
 
@@ -26,7 +28,7 @@
 - [ ] **无运行中的不必要服务** - `count(linux_security_services_info{service_name=~"nfs|cups|bluetooth|avahi-daemon|rpcbind|postfix", is_running="true"}) == 0`
 
 ### 5. 系统维护
-- [ ] **系统补丁信息** - `linux_security_patch_info{last_patch_time!="unknown"}`
+- [ ] **系统补丁信息** - `linux_security_last_patch_time{package_type!="unknown"}`
 
 ## Prometheus告警规则
 
@@ -36,7 +38,7 @@ groups:
   rules:
   # 关键安全告警
   - alert: RootSSHLoginEnabled
-    expr: linux_security_sshd_config_info{key="PermitRootLogin", value="yes"}
+    expr: linux_security_sshd_config_info{info_key="PermitRootLogin", info_value="yes"}
     for: 0m
     labels:
       severity: critical
@@ -46,7 +48,7 @@ groups:
       description: "Root account can login directly via SSH, which violates security policy"
 
   - alert: SELinuxNotEnforcing
-    expr: linux_security_selinux_config{key="SELINUX", value=~"permissive|disabled"}
+    expr: linux_security_selinux_config{info_key="SELINUX", info_value=~"permissive|disabled"}
     for: 0m
     labels:
       severity: warning
@@ -56,7 +58,7 @@ groups:
       description: "SELinux should be in enforcing mode for better security"
 
   - alert: SELinuxDisabled
-    expr: linux_security_selinux_config{key="SELINUX", value="disabled"}
+    expr: linux_security_selinux_config{info_key="SELINUX", info_value="disabled"}
     for: 0m
     labels:
       severity: critical
@@ -75,6 +77,16 @@ groups:
       summary: "Firewall is disabled"
       description: "System firewall should be enabled to protect against network attacks"
 
+  - alert: FirewallNotRunning
+    expr: linux_security_firewall_enabled{firewall_type!="none", is_running="false"} == 1
+    for: 5m
+    labels:
+      severity: warning
+      category: security
+    annotations:
+      summary: "Firewall is enabled but not running"
+      description: "Firewall {{ $labels.firewall_type }} is enabled but not currently running"
+
   - alert: UnknownProcessUsingPort
     expr: linux_security_ports_use_info{process="unknown"} == 1
     for: 0m
@@ -87,7 +99,7 @@ groups:
 
   # 密码策略告警
   - alert: PasswordMaxDaysTooLong
-    expr: linux_security_login_defs_info{key="PASS_MAX_DAYS", value="num"} > 90
+    expr: linux_security_login_defs_info{info_key="PASS_MAX_DAYS", info_value="num"} > 90
     for: 0m
     labels:
       severity: warning
@@ -97,7 +109,7 @@ groups:
       description: "Password max days should be 90 or fewer days"
 
   - alert: PasswordMinLengthTooShort
-    expr: linux_security_login_defs_info{key="PASS_MIN_LEN", value="num"} < 10
+    expr: linux_security_login_defs_info{info_key="PASS_MIN_LEN", info_value="num"} < 10
     for: 0m
     labels:
       severity: warning
@@ -139,7 +151,7 @@ groups:
 
   # 系统维护告警
   - alert: SystemPatchInfoUnknown
-    expr: linux_security_patch_info{last_patch_time="unknown"}
+    expr: linux_security_last_patch_time{package_type="unknown"}
     for: 0m
     labels:
       severity: warning
@@ -156,16 +168,31 @@ groups:
 ```promql
 # 计算安全合规性评分 (0-100分)
 (
-  (linux_security_sshd_config_info{key="PermitRootLogin", value="no"} or vector(0)) * 20 +
-  (linux_security_selinux_config{key="SELINUX", value="enforcing"} or vector(0)) * 15 +
-  (linux_security_firewall_enabled == 1) * 15 +
-  ((linux_security_login_defs_info{key="PASS_MIN_LEN", value="num"} >= 10) or vector(0)) * 10 +
-  ((linux_security_login_defs_info{key="PASS_MAX_DAYS", value="num"} <= 90) or vector(0)) * 10 +
+  (linux_security_sshd_config_info{info_key="PermitRootLogin", info_value="no"} or vector(0)) * 20 +
+  (linux_security_selinux_config{info_key="SELINUX", info_value="enforcing"} or vector(0)) * 15 +
+  (linux_security_firewall_enabled{firewall_type!="none"} == 1) * 10 +
+  (linux_security_firewall_enabled{firewall_type!="none", is_running="true"} == 1) * 5 +
+  ((linux_security_login_defs_info{info_key="PASS_MIN_LEN", info_value="num"} >= 10) or vector(0)) * 10 +
+  ((linux_security_login_defs_info{info_key="PASS_MAX_DAYS", info_value="num"} <= 90) or vector(0)) * 10 +
   (linux_security_services_info{service_name="xwindow", is_running="false"} or vector(0)) * 5 +
   (count(linux_security_services_info{service_name=~"nfs|cups|bluetooth|avahi-daemon|rpcbind|postfix", is_running="true"}) == 0) * 10 +
-  (linux_security_hosts_options_info{file="hosts.deny", service="ALL", host="ALL", action="deny"} or vector(0)) * 5
+  (linux_security_hosts_options_info{file="hosts.deny", service="ALL", host="ALL", action="deny"} or vector(0)) * 5 +
+  (linux_security_last_patch_time{package_type!="unknown"} or vector(0)) * 5
 )
 ```
+
+**评分说明**:
+- SSH禁用root登录: 20分
+- SELinux强制模式: 15分
+- 防火墙启用: 10分
+- 防火墙正在运行: 5分
+- 密码最小长度符合要求: 10分
+- 密码最大有效期符合要求: 10分
+- 禁用X Window: 5分
+- 无不必要服务运行: 10分
+- TCP Wrappers配置: 5分
+- 系统补丁信息可用: 5分
+- **总分**: 100分
 
 ## 检查频率建议
 
@@ -183,6 +210,13 @@ groups:
 linux_security_firewall_enabled{firewall_type="firewalld"}
 linux_security_firewall_enabled{firewall_type="ufw"}
 linux_security_firewall_enabled{firewall_type="iptables"}
+
+# 检查防火墙是否正在运行
+linux_security_firewall_enabled{is_running="true"}
+linux_security_firewall_enabled{firewall_type="firewalld", is_running="true"}
+
+# 检查防火墙已启用但未运行
+linux_security_firewall_enabled{firewall_type!="none", is_running="false"} == 1
 
 # 统计启用的防火墙数量
 sum(linux_security_firewall_enabled)
@@ -223,6 +257,65 @@ linux_security_services_info{is_enabled="true"}
 
 # 统计各类型服务的数量
 count by (service_type) (linux_security_services_info)
+```
+
+### 系统维护监控
+
+```promql
+# 查询补丁时间信息
+linux_security_last_patch_time
+
+# 查询包数量信息
+linux_security_package_count
+
+# 按包管理器类型统计
+linux_security_package_count{package_type="rpm"}
+linux_security_package_count{package_type="dpkg"}
+linux_security_package_count{package_type="pacman"}
+
+# 查询未知包管理器类型
+linux_security_last_patch_time{package_type="unknown"}
+linux_security_package_count{package_type="unknown"}
+```
+
+### 账户密码策略监控
+
+```promql
+# 查看所有账户的密码最大有效期
+linux_security_password_max_days
+
+# 查找密码有效期过长的账户
+linux_security_password_max_days > 90
+
+# 查看账户过期信息
+linux_security_account_expire
+
+# 查看密码警告天数设置
+linux_security_password_warn_days
+
+# 查看密码不活跃天数设置
+linux_security_password_inactive
+
+# 查看最后密码修改时间
+linux_security_last_password_change
+
+# 查看密码最小有效期
+linux_security_password_min_days
+
+# 组合查询：查看有sudo权限的账户的密码策略
+linux_security_password_max_days * on(username) group_left() linux_security_account_info{has_sudo="true"}
+
+# 统计不同shell的使用情况
+count by (shell) (linux_security_account_info)
+
+# 查看有sudo权限的账户
+linux_security_account_info{has_sudo="true"}
+
+# 计算密码策略平均值
+avg(linux_security_password_max_days)
+
+# 统计密码有效期分布
+count by (password_max_days) (linux_security_password_max_days)
 ```
 
 ## 修复建议

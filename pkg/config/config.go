@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"strings"
 
@@ -15,6 +16,15 @@ type Config struct {
 	PortStates    []string
 	LogLevel      string
 	LogFormat     string
+	ShowVersion   bool
+}
+
+// VersionInfo 版本信息结构
+type VersionInfo struct {
+	Version   string
+	BuildDate string
+	GitCommit string
+	GoVersion string
 }
 
 // LevelFlagOptions represents allowed logging levels.
@@ -22,6 +32,14 @@ var LevelFlagOptions = []string{"debug", "info", "warn", "error"}
 
 // FormatFlagOptions represents allowed formats.
 var FormatFlagOptions = []string{"logfmt", "json"}
+
+// 版本信息变量，在构建时通过 ldflags 设置
+var (
+	Version   = "dev"
+	BuildDate = "unknown"
+	GitCommit = "unknown"
+	GoVersion = "unknown"
+)
 
 // LoadConfig 加载应用程序配置
 func LoadConfig() *Config {
@@ -31,9 +49,16 @@ func LoadConfig() *Config {
 		portStates    = flag.String("collector.port-states", "LISTEN", "Comma-separated list of TCP port states to collect (LISTEN,ESTABLISHED,SYN_SENT,SYN_RECV,FIN_WAIT1,FIN_WAIT2,TIME_WAIT,CLOSE,CLOSE_WAIT,LAST_ACK,CLOSING). Default: LISTEN only.")
 		logLevel      = flag.String("log.level", "info", "Set the logging level. One of: debug, info, warn, error.")
 		logFormat     = flag.String("log.format", "logfmt", "Set the log format. One of: logfmt, json.")
+		showVersion   = flag.Bool("version", false, "Show version information and exit.")
 	)
 
 	flag.Parse()
+
+	// 检查版本参数
+	if *showVersion {
+		PrintVersion()
+		return nil
+	}
 
 	// 解析端口状态配置
 	states := strings.Split(*portStates, ",")
@@ -62,6 +87,7 @@ func LoadConfig() *Config {
 		PortStates:    states,
 		LogLevel:      logLevelLower,
 		LogFormat:     logFormatLower,
+		ShowVersion:   *showVersion,
 	}
 }
 
@@ -83,4 +109,13 @@ func isValidLogFormat(format string) bool {
 		}
 	}
 	return false
+}
+
+// PrintVersion 打印版本信息
+func PrintVersion() {
+	fmt.Printf("Security Exporter\n")
+	fmt.Printf("Version: %s\n", Version)
+	fmt.Printf("Build Date: %s\n", BuildDate)
+	fmt.Printf("Git Commit: %s\n", GitCommit)
+	fmt.Printf("Go Version: %s\n", GoVersion)
 }

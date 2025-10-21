@@ -15,6 +15,11 @@ func main() {
 	// 加载配置（包含日志配置）
 	cfg := config.LoadConfig()
 
+	// 如果配置为nil，说明显示了版本信息，直接退出
+	if cfg == nil {
+		return
+	}
+
 	// 创建收集器并注册
 	securityCollector := collector.NewSecurityCollector(cfg)
 	prometheus.MustRegister(securityCollector)

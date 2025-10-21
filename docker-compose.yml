@@ -2,7 +2,11 @@ version: '3.8'
 
 services:
   security-exporter:
-    build: .
+    build: 
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     image: security-exporter:latest
     container_name: security-exporter
     restart: unless-stopped
@@ -13,6 +17,7 @@ services:
       # 挂载系统文件以进行安全检查
       - /etc/passwd:/etc/passwd:ro
       - /etc/group:/etc/group:ro
+      - /etc/shadow:/etc/shadow:ro
       - /etc/ssh/sshd_config:/etc/ssh/sshd_config:ro
       - /etc/login.defs:/etc/login.defs:ro
       - /etc/selinux/config:/etc/selinux/config:ro
