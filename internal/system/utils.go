@@ -164,3 +164,115 @@ func getProcessName(pid string) string {
 	logger.Debug("getProcessName: 无法获取PID %s 的进程名", pid)
 	return "unknown"
 }
+
+// ProcessDetail 进程详细信息（内部使用）
+type ProcessDetail struct {
+	PID     string
+	Name    string
+	ExePath string
+	CmdLine string
+}
+
+// getProcessDetail 获取进程详细信息
+func getProcessDetail(pid string) *ProcessDetail {
+	logger.Debug("getProcessDetail: 开始获取PID %s 的详细信息", pid)
+
+	detail := &ProcessDetail{
+		PID: pid,
+	}
+
+	// 获取进程名
+	detail.Name = getProcessName(pid)
+
+	// 获取可执行文件路径
+	exePath := fmt.Sprintf("/proc/%s/exe", pid)
+	if target, err := os.Readlink(exePath); err == nil {
+		detail.ExePath = target
+		logger.Debug("getProcessDetail: 获取到可执行文件路径: %s", target)
+	} else {
+		logger.Debug("getProcessDetail: 无法读取可执行文件路径: %v", err)
+	}
+
+	// 获取命令行（可选，用于版本号获取）
+	cmdlinePath := fmt.Sprintf("/proc/%s/cmdline", pid)
+	if content, err := os.ReadFile(cmdlinePath); err == nil {
+		detail.CmdLine = strings.ReplaceAll(string(content), "\x00", " ")
+		logger.Debug("getProcessDetail: 获取到命令行: %s", detail.CmdLine)
+	}
+
+	return detail
+}
+
+// getProcessDetailByInode 通过inode获取进程详细信息（内部使用）
+func getProcessDetailByInode(line string) *ProcessDetail {
+	logger.Debug("getProcessDetailByInode: 开始解析行: %s", line)
+
+	// 解析行格式获取inode
+	parts := strings.Fields(line)
+	if len(parts) < 10 {
+		logger.Debug("getProcessDetailByInode: 行字段数量不足，只有 %d 个字段", len(parts))
+		return nil
+	}
+
+	// 通过第一列判断inode位置
+	var inode string
+	if strings.HasSuffix(parts[0], ":") {
+		// 数据行：inode是第10个字段（索引9）
+		if len(parts) >= 10 {
+			inode = parts[9]
+		}
+	} else {
+		// 可能是表头行或其他格式，尝试最后一个字段
+		inode = parts[len(parts)-1]
+	}
+	if inode == "" {
+		logger.Debug("getProcessDetailByInode: inode为空")
+		return nil
+	}
+
+	logger.Debug("getProcessDetailByInode: 提取到inode: %s", inode)
+
+	// 扫描所有进程目录查找匹配的inode
+	procDir := "/proc"
+	entries, err := os.ReadDir(procDir)
+	if err != nil {
+		logger.Debug("getProcessDetailByInode: 无法读取/proc目录: %v", err)
+		return nil
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// 检查是否为数字目录（进程ID）
+		pid := entry.Name()
+		if _, err := strconv.Atoi(pid); err != nil {
+			continue
+		}
+
+		// 检查进程的fd目录
+		fdDir := fmt.Sprintf("/proc/%s/fd", pid)
+		if fdEntries, err := os.ReadDir(fdDir); err == nil {
+			for _, fdEntry := range fdEntries {
+				// 读取符号链接目标
+				linkPath := fmt.Sprintf("/proc/%s/fd/%s", pid, fdEntry.Name())
+				if target, err := os.Readlink(linkPath); err == nil {
+					// 检查是否匹配socket inode
+					socketPattern := fmt.Sprintf("socket:[%s]", inode)
+					if strings.Contains(target, socketPattern) {
+						// 找到匹配的进程，返回详细信息
+						detail := getProcessDetail(pid)
+						if detail != nil {
+							logger.Debug("getProcessDetailByInode: 找到匹配进程 PID=%s, 进程名=%s", pid, detail.Name)
+						}
+						return detail
+					}
+				}
+			}
+		}
+	}
+
+	logger.Debug("getProcessDetailByInode: 未找到匹配inode %s 的进程", inode)
+	return nil
+}

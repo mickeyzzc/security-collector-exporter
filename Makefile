@@ -54,7 +54,7 @@ deps:
 build-linux:
 	@echo "Building for Linux..."
 	@mkdir -p $(BUILD_DIR)
-	@GOOS=linux GOARCH=amd64 go build -ldflags "-X security-exporter/pkg/config.Version=$(shell git describe --tags --always --dirty) -X security-exporter/pkg/config.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ) -X security-exporter/pkg/config.GitCommit=$(shell git rev-parse HEAD) -X security-exporter/pkg/config.GoVersion=$(shell go version | cut -d' ' -f3)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 $(MAIN_PATH)
+	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X security-exporter/pkg/config.Version=$(shell git describe --tags --always --dirty) -X security-exporter/pkg/config.BuildDate=$(shell date -u +%Y-%m-%dT%H:%M:%SZ) -X security-exporter/pkg/config.GitCommit=$(shell git rev-parse HEAD) -X security-exporter/pkg/config.GoVersion=$(shell go version | cut -d' ' -f3)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 $(MAIN_PATH)
 
 # Docker 构建
 docker-build:

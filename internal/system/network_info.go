@@ -270,6 +270,8 @@ type PortUseInfo struct {
 	Port     string
 	State    string
 	Process  string // 进程名
+	ExePath  string // 可执行文件路径
+	Version  string // 版本号
 }
 
 // GetPortsUseInfo 获取端口使用信息
@@ -393,18 +395,33 @@ func getPortsFromProcNet(filePath, protocol string, allowedStates []string) ([]P
 			continue
 		}
 
-		// 获取进程信息
+		// 获取进程详细信息
 		logger.Debug("getPortsFromProcNet: 开始获取端口 %s:%s 的进程信息", ip, port)
-		processName := getProcessByInode(line)
-		logger.Debug("getPortsFromProcNet: 端口 %s:%s 匹配到进程: %s", ip, port, processName)
+		processDetail := getProcessDetailByInode(line)
 
-		ports = append(ports, PortUseInfo{
+		// 创建端口信息结构
+		portInfo := PortUseInfo{
 			Protocol: protocol,
 			IP:       ip,
 			Port:     port,
 			State:    state,
-			Process:  processName,
-		})
+		}
+
+		// 如果找到了进程，填充详细信息
+		if processDetail != nil {
+			portInfo.Process = processDetail.Name
+			portInfo.ExePath = processDetail.ExePath
+
+			// 尝试获取版本号（传递命令行参数）
+			if version := getProcessVersion(processDetail.Name, processDetail.ExePath, processDetail.CmdLine); version != "" {
+				portInfo.Version = version
+			}
+			logger.Debug("getPortsFromProcNet: 端口 %s:%s 匹配到进程: %s (路径: %s, 版本: %s)", ip, port, portInfo.Process, portInfo.ExePath, portInfo.Version)
+		} else {
+			portInfo.Process = "unknown"
+		}
+
+		ports = append(ports, portInfo)
 	}
 
 	logger.Debug("getPortsFromProcNet: 文件 %s 处理完成，找到 %d 个有效端口", filePath, len(ports))

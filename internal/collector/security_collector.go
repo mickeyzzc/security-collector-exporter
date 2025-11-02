@@ -118,7 +118,7 @@ func NewSecurityCollector(cfg *config.Config) *SecurityCollector {
 		portsUseInfo: prometheus.NewDesc(
 			"linux_security_ports_use_info",
 			"系统端口使用信息",
-			[]string{"protocol", "local_ip", "local_port", "state", "process"}, nil,
+			[]string{"protocol", "local_ip", "local_port", "state", "process", "exe_path", "version"}, nil,
 		),
 		servicesInfo: prometheus.NewDesc(
 			"linux_security_services_info",
@@ -360,6 +360,8 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 				port.Port,
 				port.State,
 				port.Process,
+				port.ExePath,
+				port.Version,
 			)
 		}
 	}
