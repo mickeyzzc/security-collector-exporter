@@ -259,11 +259,12 @@ func getVersionFromBinary(exePath string) string {
 }
 
 // isJavaProcess 判断是否为Java进程
+// function isJavaProcess(processName string) bool
 func isJavaProcess(processName string) bool {
 	logger.Debug("isJavaProcess: 检查进程名 %s 是否为Java进程", processName)
 
 	javaProcessNames := []string{
-		"java", "elasticsearch", "kafka", "logstash", "tomcat",
+		"java", "javaw", "elasticsearch", "kafka", "logstash", "tomcat",
 		"jenkins", "zookeeper", "solr", "cassandra", "hadoop",
 	}
 
@@ -401,66 +402,210 @@ func getJavaAppVersionByHTTP(processName string) string {
 
 // getJavaAppVersionFromCmdLine 从命令行提取jar文件路径并获取版本
 func getJavaAppVersionFromCmdLine(cmdLine string) string {
-	logger.Debug("getJavaAppVersionFromCmdLine: 从命令行提取jar文件: %s", cmdLine)
+	logger.Debug("getJavaAppVersionFromCmdLine: 从命令行提取jar/war文件: %s", cmdLine)
 
-	// 从命令行中提取jar文件路径
-	jarPattern := regexp.MustCompile(`([/\w\-\.]+[/\\][\w\-\.]+\.jar)`)
+	// Linux-only：支持引号中的路径、绝对路径、相对文件名
+	jarPattern := regexp.MustCompile(`(?i)"([^"]+\.(?:jar|war))"|(/[^\s"]+\.(?:jar|war))|(\b[\w\-.]+\.jar\b|\b[\w\-.]+\.war\b)`)
 	matches := jarPattern.FindAllStringSubmatch(cmdLine, -1)
 
-	if len(matches) == 0 {
-		logger.Debug("getJavaAppVersionFromCmdLine: 命令行中未找到jar文件")
+	extractPath := func(subs []string) string {
+		for i := 1; i < len(subs); i++ {
+			p := strings.TrimSpace(subs[i])
+			if p != "" {
+				return strings.Trim(p, `"`)
+			}
+		}
 		return ""
 	}
 
-	logger.Debug("getJavaAppVersionFromCmdLine: 找到 %d 个jar文件路径", len(matches))
-
-	// 尝试每个jar文件，找到主jar（通常包含应用名称）
-	for _, match := range matches {
-		jarPath := match[1]
-		logger.Debug("getJavaAppVersionFromCmdLine: 尝试jar文件: %s", jarPath)
-
-		// 检查文件是否存在
-		if _, err := os.Stat(jarPath); err != nil {
-			logger.Debug("getJavaAppVersionFromCmdLine: jar文件不存在: %s, 错误: %v", jarPath, err)
-			continue
+	if len(matches) > 0 {
+		logger.Debug("getJavaAppVersionFromCmdLine: 找到 %d 个jar/war文件", len(matches))
+		var jarPaths []string
+		for _, m := range matches {
+			jarPath := extractPath(m)
+			if jarPath == "" {
+				continue
+			}
+			if _, err := os.Stat(jarPath); err != nil {
+				logger.Debug("getJavaAppVersionFromCmdLine: 文件不存在: %s, 错误: %v", jarPath, err)
+				continue
+			}
+			jarPaths = append(jarPaths, jarPath)
 		}
+		// 优先匹配主程序 jar 名称（集中维护）
+		mainJarRegexes := getAllMainJarRegexes()
+		for _, jp := range jarPaths {
+			base := filepath.Base(jp)
+			for _, re := range mainJarRegexes {
+				if re.MatchString(base) {
+					if m := re.FindStringSubmatch(base); len(m) > 1 {
+						version := strings.TrimSpace(m[1])
+						logger.Debug("getJavaAppVersionFromCmdLine: 主程序文件名提取到版本: %s", version)
+						return version
+					}
+					if version := getVersionFromJarManifest(jp); version != "" {
+						logger.Debug("getJavaAppVersionFromCmdLine: 主程序 MANIFEST 提取到版本: %s", version)
+						return version
+					}
+				}
+			}
+		}
+		// 兜底：遍历所有 jar/war 的 MANIFEST（可能是依赖库）
+		for _, jp := range jarPaths {
+			if version := getVersionFromJarManifest(jp); version != "" {
+				logger.Debug("getJavaAppVersionFromCmdLine: 兜底从 %s 获取到版本: %s", jp, version)
+				return version
+			}
+		}
+	} else {
+		logger.Debug("getJavaAppVersionFromCmdLine: 命令行中未直接找到jar/war文件")
+	}
 
-		// 从jar文件的MANIFEST.MF获取版本
-		if version := getVersionFromJarManifest(jarPath); version != "" {
-			logger.Debug("getJavaAppVersionFromCmdLine: 从jar文件 %s 获取到版本: %s", jarPath, version)
-			return version
+	// 解析 -cp/-classpath，提取 classpath 项并尝试主程序 jar 优先匹配
+	cpEntries := extractClasspathEntries(cmdLine)
+	if len(cpEntries) > 0 {
+		logger.Debug("getJavaAppVersionFromCmdLine: 解析到 %d 个 classpath 项", len(cpEntries))
+		mainJarRegexes := getAllMainJarRegexes()
+		for _, entry := range cpEntries {
+			e := strings.TrimSpace(entry)
+			if e == "" {
+				continue
+			}
+			// 展开 lib/*
+			if strings.HasSuffix(e, "/*") {
+				dir := strings.TrimSuffix(e, "/*")
+				if version := findVersionInLibDirWithPriority(dir, mainJarRegexes, nil); version != "" {
+					logger.Debug("getJavaAppVersionFromCmdLine: 从 classpath 目录 %s 获取到版本: %s", dir, version)
+					return version
+				}
+				continue
+			}
+			// 目录：尝试扫描
+			if fi, err := os.Stat(e); err == nil && fi.IsDir() {
+				if version := findVersionInLibDirWithPriority(e, mainJarRegexes, nil); version != "" {
+					logger.Debug("getJavaAppVersionFromCmdLine: 从 classpath 目录 %s 获取到版本: %s", e, version)
+					return version
+				}
+				continue
+			}
+			// 文件：jar/war 处理
+			ext := strings.ToLower(filepath.Ext(e))
+			if ext == ".jar" || ext == ".war" {
+				base := filepath.Base(e)
+				for _, re := range mainJarRegexes {
+					if re.MatchString(base) {
+						if m := re.FindStringSubmatch(base); len(m) > 1 {
+							version := strings.TrimSpace(m[1])
+							logger.Debug("getJavaAppVersionFromCmdLine: 主程序文件名提取到版本: %s", version)
+							return version
+						}
+						if version := getVersionFromJarManifest(e); version != "" {
+							logger.Debug("getJavaAppVersionFromCmdLine: 主程序 MANIFEST 提取到版本: %s", version)
+							return version
+						}
+					}
+				}
+				// 兜底：如果 classpath 指明的是某个 jar，则尝试 MANIFEST
+				if version := getVersionFromJarManifest(e); version != "" {
+					logger.Debug("getJavaAppVersionFromCmdLine: 兜底从 %s 获取到版本: %s", e, version)
+					return version
+				}
+			}
 		}
 	}
 
-	logger.Debug("getJavaAppVersionFromCmdLine: 无法从命令行jar文件获取版本")
+	// 解析 -Dxxx=yyy JVM 属性定位安装目录
+	props := extractJavaPropsFromCmdLine(cmdLine)
+	if len(props) > 0 {
+		logger.Debug("getJavaAppVersionFromCmdLine: 解析到 %d 个 JVM 属性", len(props))
+		// Elasticsearch
+		if home := firstNonEmpty(props["es.path.home"], props["path.home"]); home != "" {
+			if version := findVersionInLibDirWithPriority(filepath.Join(home, "lib"), []*regexp.Regexp{getMainJarRegex("elasticsearch")}, nil); version != "" {
+				return version
+			}
+		}
+		// Logstash
+		if home := props["logstash.home"]; home != "" {
+			coreLib := filepath.Join(home, "logstash-core", "lib", "logstash-core")
+			if version := findVersionInLibDirWithPriority(coreLib, []*regexp.Regexp{getMainJarRegex("logstash")}, nil); version != "" {
+				return version
+			}
+		}
+		// Kafka
+		if home := firstNonEmpty(props["kafka.home"], props["kafka.base"]); home != "" {
+			if version := findVersionInLibDirWithPriority(filepath.Join(home, "libs"), []*regexp.Regexp{getMainJarRegex("kafka")}, nil); version != "" {
+				return version
+			}
+		}
+		// Tomcat
+		if home := firstNonEmpty(props["catalina.base"], props["catalina.home"]); home != "" {
+			if version := findVersionInLibDirWithPriority(filepath.Join(home, "lib"), []*regexp.Regexp{getMainJarRegex("tomcat")}, nil); version != "" {
+				return version
+			}
+		}
+		// Jenkins
+		if home := firstNonEmpty(props["jenkins.home"], props["JENKINS_HOME"]); home != "" {
+			if version := findVersionInLibDirWithPriority(home, []*regexp.Regexp{getMainJarRegex("jenkins")}, nil); version != "" {
+				return version
+			}
+		}
+		// Zookeeper
+		if home := props["zookeeper.home"]; home != "" {
+			if version := findVersionInLibDirWithPriority(filepath.Join(home, "lib"), []*regexp.Regexp{getMainJarRegex("zookeeper")}, nil); version != "" {
+				return version
+			}
+		}
+		// Cassandra
+		if home := firstNonEmpty(props["cassandra.home"], props["cassandra.base"]); home != "" {
+			if version := findVersionInLibDirWithPriority(filepath.Join(home, "lib"), []*regexp.Regexp{getMainJarRegex("cassandra")}, nil); version != "" {
+				return version
+			}
+		}
+		// Solr
+		if home := firstNonEmpty(props["solr.install.dir"], props["solr.home"]); home != "" {
+			if version := findVersionInLibDirWithPriority(filepath.Join(home, "server", "lib"), []*regexp.Regexp{getMainJarRegex("solr")}, nil); version != "" {
+				return version
+			}
+			if version := findVersionInLibDirWithPriority(filepath.Join(home, "server", "solr", "lib"), []*regexp.Regexp{getMainJarRegex("solr")}, nil); version != "" {
+				return version
+			}
+		}
+	}
+
+	logger.Debug("getJavaAppVersionFromCmdLine: 无法从命令行/属性获取版本")
 	return ""
 }
 
 // getVersionFromJarManifest 从jar文件的MANIFEST.MF读取版本
+// function getVersionFromJarManifest(jarPath string) string
 func getVersionFromJarManifest(jarPath string) string {
-	logger.Debug("getVersionFromJarManifest: 从jar文件 %s 读取MANIFEST.MF", jarPath)
+	logger.Debug("getVersionFromJarManifest: 从压缩文件 %s 读取MANIFEST.MF", jarPath)
 
 	jarFile, err := zip.OpenReader(jarPath)
 	if err != nil {
-		logger.Debug("getVersionFromJarManifest: 无法打开jar文件: %v", err)
+		logger.Debug("getVersionFromJarManifest: 无法打开文件: %v", err)
 		return ""
 	}
 	defer jarFile.Close()
 
-	logger.Debug("getVersionFromJarManifest: jar文件打开成功，查找MANIFEST.MF")
-
-	// 查找MANIFEST.MF文件
+	// 定位 MANIFEST.MF
 	var manifestFile *zip.File
 	for _, file := range jarFile.File {
 		if file.Name == "META-INF/MANIFEST.MF" || file.Name == "MANIFEST.MF" {
 			manifestFile = file
-			logger.Debug("getVersionFromJarManifest: 找到MANIFEST.MF: %s", file.Name)
 			break
 		}
 	}
-
 	if manifestFile == nil {
-		logger.Debug("getVersionFromJarManifest: 未找到MANIFEST.MF文件")
+		logger.Debug("getVersionFromJarManifest: 未找到MANIFEST.MF")
+		// 作为兜底尝试从文件名提取
+		baseName := filepath.Base(jarPath)
+		re := regexp.MustCompile(`-([\d]+\.[\d]+(?:\.[\d]+)?)\.(?:jar|war)$`)
+		if m := re.FindStringSubmatch(baseName); len(m) > 1 {
+			version := strings.TrimSpace(m[1])
+			logger.Debug("getVersionFromJarManifest: 兜底从文件名解析到版本: %s", version)
+			return version
+		}
 		return ""
 	}
 
@@ -476,55 +621,52 @@ func getVersionFromJarManifest(jarPath string) string {
 		logger.Debug("getVersionFromJarManifest: 读取MANIFEST.MF失败: %v", err)
 		return ""
 	}
-
 	manifestStr := string(content)
-	logger.Debug("getVersionFromJarManifest: MANIFEST.MF内容长度: %d 字节", len(manifestStr))
 
-	// 查找版本信息
+	// 常见的版本字段（覆盖更多情况）
 	versionPatterns := []struct {
 		name    string
 		pattern *regexp.Regexp
 	}{
-		{"Elasticsearch-Version", regexp.MustCompile(`(?i)Elasticsearch-Version:\s*([\d.]+)`)},
-		{"Kafka-Version", regexp.MustCompile(`(?i)Kafka-Version:\s*([\d.]+)`)},
-		{"Implementation-Version", regexp.MustCompile(`(?i)Implementation-Version:\s*([\d.]+)`)},
-		{"Bundle-Version", regexp.MustCompile(`(?i)Bundle-Version:\s*([\d.]+)`)},
-		{"Version", regexp.MustCompile(`(?i)Version:\s*([\d.]+)`)},
+		{"Elasticsearch-Version", regexp.MustCompile(`(?i)^Elasticsearch-Version:\s*([\d.]+)\s*$`)},
+		{"Kafka-Version", regexp.MustCompile(`(?i)^Kafka-Version:\s*([\d.]+)\s*$`)},
+		{"Implementation-Version", regexp.MustCompile(`(?i)^Implementation-Version:\s*([\d\w\.\-]+)\s*$`)},
+		{"Bundle-Version", regexp.MustCompile(`(?i)^Bundle-Version:\s*([\d\w\.\-]+)\s*$`)},
+		{"Specification-Version", regexp.MustCompile(`(?i)^Specification-Version:\s*([\d\w\.\-]+)\s*$`)},
+		{"Version", regexp.MustCompile(`(?i)^Version:\s*([\d\w\.\-]+)\s*$`)},
 	}
 
 	for _, vp := range versionPatterns {
-		matches := vp.pattern.FindStringSubmatch(manifestStr)
-		if len(matches) > 1 {
-			version := strings.TrimSpace(matches[1])
-			logger.Debug("getVersionFromJarManifest: 使用模式 %s 解析到版本: %s", vp.name, version)
-			return version
+		if m := vp.pattern.FindStringSubmatch(manifestStr); len(m) > 1 {
+			version := strings.TrimSpace(m[1])
+			// 过滤掉明显不合理的值
+			if regexp.MustCompile(`^\d+\.\d+`).MatchString(version) || regexp.MustCompile(`^\d[\d\w\.\-]+$`).MatchString(version) {
+				logger.Debug("getVersionFromJarManifest: 使用模式 %s 解析到版本: %s", vp.name, version)
+				return version
+			}
 		}
 	}
 
-	logger.Debug("getVersionFromJarManifest: MANIFEST.MF中未找到版本信息")
-
-	// 从jar文件名提取版本（备用方案）
+	// 兜底：从文件名解析（允许 -SNAPSHOT 等后缀）
 	baseName := filepath.Base(jarPath)
-	logger.Debug("getVersionFromJarManifest: 尝试从文件名提取版本: %s", baseName)
-	re := regexp.MustCompile(`-([\d]+\.[\d]+(?:\.[\d]+)?)\.jar$`)
-	matches := re.FindStringSubmatch(baseName)
-	if len(matches) > 1 {
-		version := strings.TrimSpace(matches[1])
-		logger.Debug("getVersionFromJarManifest: 从文件名解析到版本: %s", version)
+	re := regexp.MustCompile(`-([\d][\d\w\.-]+)\.(?:jar|war)$`)
+	if m := re.FindStringSubmatch(baseName); len(m) > 1 {
+		version := strings.TrimSpace(m[1])
+		logger.Debug("getVersionFromJarManifest: 兜底从文件名解析到版本: %s", version)
 		return version
 	}
 
-	logger.Debug("getVersionFromJarManifest: 无法从jar文件获取版本")
+	logger.Debug("getVersionFromJarManifest: MANIFEST.MF中未找到版本信息")
 	return ""
 }
 
 // getJavaAppVersionFromJar 从jar文件目录查找并读取MANIFEST.MF
 func getJavaAppVersionFromJar(processName string) string {
-	logger.Debug("getJavaAppVersionFromJar: 从jar目录查找进程 %s 的版本", processName)
+	logger.Debug("getJavaAppVersionFromJar: 从jar/war目录查找进程 %s 的版本", processName)
 
 	processNameLower := strings.ToLower(processName)
 
-	// 定义常见的jar文件路径模式
+	// 常见应用的库目录（Linux-only）
 	jarPatterns := []struct {
 		name  string
 		paths []string
@@ -537,7 +679,7 @@ func getJavaAppVersionFromJar(processName string) string {
 				"/opt/elasticsearch/lib",
 				"/var/lib/elasticsearch/lib",
 			},
-			regex: regexp.MustCompile(`elasticsearch-([\d.]+)\.jar`),
+			regex: getMainJarRegex("elasticsearch"),
 		},
 		{
 			name: "kafka",
@@ -545,7 +687,7 @@ func getJavaAppVersionFromJar(processName string) string {
 				"/opt/kafka/libs",
 				"/usr/share/kafka/libs",
 			},
-			regex: regexp.MustCompile(`kafka_[\d.]+-([\d.]+)\.jar`),
+			regex: getMainJarRegex("kafka"),
 		},
 		{
 			name: "logstash",
@@ -553,7 +695,7 @@ func getJavaAppVersionFromJar(processName string) string {
 				"/opt/logstash/logstash-core/lib/logstash-core",
 				"/usr/share/logstash/logstash-core/lib/logstash-core",
 			},
-			regex: regexp.MustCompile(`logstash-core-([\d.]+)\.jar`),
+			regex: getMainJarRegex("logstash"),
 		},
 		{
 			name: "tomcat",
@@ -561,47 +703,104 @@ func getJavaAppVersionFromJar(processName string) string {
 				"/usr/share/tomcat/lib",
 				"/opt/tomcat/lib",
 			},
-			regex: regexp.MustCompile(`catalina\.jar`), // Tomcat版本在MANIFEST.MF中
+			regex: getMainJarRegex("tomcat"),
+		},
+		{
+			name: "jenkins",
+			paths: []string{
+				"/usr/share/jenkins",
+				"/opt/jenkins",
+				"/var/lib/jenkins",
+			},
+			regex: getMainJarRegex("jenkins"),
+		},
+		{
+			name: "zookeeper",
+			paths: []string{
+				"/usr/share/zookeeper/lib",
+				"/opt/zookeeper/lib",
+			},
+			regex: getMainJarRegex("zookeeper"),
+		},
+		{
+			name: "cassandra",
+			paths: []string{
+				"/usr/share/cassandra/lib",
+				"/opt/cassandra/lib",
+			},
+			regex: getMainJarRegex("cassandra"),
+		},
+		{
+			name: "solr",
+			paths: []string{
+				"/opt/solr/server/lib",
+				"/usr/share/solr/server/lib",
+			},
+			regex: getMainJarRegex("solr"),
+		},
+		{
+			name: "nexus",
+			paths: []string{
+				"/opt/sonatype/nexus/lib",
+				"/usr/share/sonatype/nexus/lib",
+				"/usr/share/nexus/lib",
+				"/opt/nexus/lib",
+			},
+			regex: getMainJarRegex("nexus"),
+		},
+		{
+			name: "activemq",
+			paths: []string{
+				"/opt/activemq/lib",
+				"/usr/share/activemq/lib",
+			},
+			regex: getMainJarRegex("activemq"),
+		},
+		{
+			name: "spark",
+			paths: []string{
+				"/opt/spark/jars",
+				"/usr/lib/spark/jars",
+				"/usr/share/spark/jars",
+			},
+			regex: getMainJarRegex("spark"),
 		},
 	}
 
-	// 查找匹配的应用
 	for _, app := range jarPatterns {
 		if strings.Contains(processNameLower, app.name) {
 			logger.Debug("getJavaAppVersionFromJar: 匹配到应用: %s", app.name)
 			for _, libPath := range app.paths {
 				logger.Debug("getJavaAppVersionFromJar: 检查路径: %s", libPath)
-				if entries, err := os.ReadDir(libPath); err == nil {
-					logger.Debug("getJavaAppVersionFromJar: 路径存在，找到 %d 个文件", len(entries))
-					for _, entry := range entries {
-						fileName := entry.Name()
-						logger.Debug("getJavaAppVersionFromJar: 检查文件: %s", fileName)
-
-						// 尝试从文件名提取版本
-						matches := app.regex.FindStringSubmatch(fileName)
-						if len(matches) > 1 {
-							version := matches[1]
-							logger.Debug("getJavaAppVersionFromJar: 从文件名提取到版本: %s", version)
+				entries, err := os.ReadDir(libPath)
+				if err != nil {
+					logger.Debug("getJavaAppVersionFromJar: 路径不可读: %s, 错误: %v", libPath, err)
+					continue
+				}
+				for _, entry := range entries {
+					fileName := entry.Name()
+					// 仅匹配主程序 jar/war
+					if app.regex.MatchString(fileName) {
+						if m := app.regex.FindStringSubmatch(fileName); len(m) > 1 {
+							version := strings.TrimSpace(m[1])
+							logger.Debug("getJavaAppVersionFromJar: 主程序文件名提取到版本: %s", version)
 							return version
 						}
-
-						// 或者读取MANIFEST.MF
-						if strings.HasSuffix(fileName, ".jar") {
+						ext := strings.ToLower(filepath.Ext(fileName))
+						if ext == ".jar" || ext == ".war" {
 							jarPath := filepath.Join(libPath, fileName)
 							if version := getVersionFromJarManifest(jarPath); version != "" {
-								logger.Debug("getJavaAppVersionFromJar: 从jar文件 %s 获取到版本: %s", jarPath, version)
+								logger.Debug("getJavaAppVersionFromJar: 主程序 MANIFEST 获取到版本: %s", version)
 								return version
 							}
 						}
 					}
-				} else {
-					logger.Debug("getJavaAppVersionFromJar: 路径不存在: %s, 错误: %v", libPath, err)
 				}
 			}
 		}
 	}
 
-	logger.Debug("getJavaAppVersionFromJar: 无法从jar目录获取版本")
+	logger.Debug("getJavaAppVersionFromJar: 无法从jar/war目录获取版本")
 	return ""
 }
 
@@ -611,7 +810,7 @@ func getJavaAppVersionFromConfig(processName string, exePath string) string {
 
 	processNameLower := strings.ToLower(processName)
 
-	// Elasticsearch: 从lib目录的jar文件名获取
+	// Elasticsearch: jar文件名或MANIFEST（Linux-only）
 	if strings.Contains(processNameLower, "elasticsearch") {
 		logger.Debug("getJavaAppVersionFromConfig: 尝试Elasticsearch配置方法")
 		esLibPaths := []string{
@@ -620,79 +819,526 @@ func getJavaAppVersionFromConfig(processName string, exePath string) string {
 			"/var/lib/elasticsearch/lib",
 		}
 		for _, libPath := range esLibPaths {
-			logger.Debug("getJavaAppVersionFromConfig: 检查Elasticsearch路径: %s", libPath)
-			if entries, err := os.ReadDir(libPath); err == nil {
-				logger.Debug("getJavaAppVersionFromConfig: 路径存在，找到 %d 个文件", len(entries))
-				for _, entry := range entries {
-					if strings.HasPrefix(entry.Name(), "elasticsearch-") && strings.HasSuffix(entry.Name(), ".jar") {
-						re := regexp.MustCompile(`elasticsearch-([\d.]+)\.jar`)
-						matches := re.FindStringSubmatch(entry.Name())
-						if len(matches) > 1 {
-							version := matches[1]
-							logger.Debug("getJavaAppVersionFromConfig: 从Elasticsearch jar文件名获取到版本: %s", version)
-							return version
-						}
-					}
-				}
+			if version := findVersionInLibDirWithPriority(libPath, []*regexp.Regexp{getMainJarRegex("elasticsearch")}, nil); version != "" {
+				return version
 			}
 		}
 	}
 
-	// Kafka: 从libs目录的jar文件名获取
+	// Kafka: libs目录
 	if strings.Contains(processNameLower, "kafka") {
 		logger.Debug("getJavaAppVersionFromConfig: 尝试Kafka配置方法")
 		kafkaPaths := []string{
-			"/opt/kafka",
-			"/usr/share/kafka",
+			"/opt/kafka/libs",
+			"/usr/share/kafka/libs",
 		}
-		for _, kafkaPath := range kafkaPaths {
-			libPath := filepath.Join(kafkaPath, "libs")
-			logger.Debug("getJavaAppVersionFromConfig: 检查Kafka路径: %s", libPath)
-			if entries, err := os.ReadDir(libPath); err == nil {
-				logger.Debug("getJavaAppVersionFromConfig: 路径存在，找到 %d 个文件", len(entries))
-				for _, entry := range entries {
-					if strings.HasPrefix(entry.Name(), "kafka_") && strings.HasSuffix(entry.Name(), ".jar") {
-						// Kafka版本格式: kafka_2.13-3.5.0.jar，提取3.5.0
-						re := regexp.MustCompile(`kafka_[\d.]+-([\d.]+)\.jar`)
-						matches := re.FindStringSubmatch(entry.Name())
-						if len(matches) > 1 {
-							version := matches[1]
-							logger.Debug("getJavaAppVersionFromConfig: 从Kafka jar文件名获取到版本: %s", version)
-							return version
-						}
-					}
-				}
+		for _, libPath := range kafkaPaths {
+			if version := findVersionInLibDirWithPriority(libPath, []*regexp.Regexp{getMainJarRegex("kafka")}, nil); version != "" {
+				return version
 			}
 		}
 	}
 
-	// Logstash: 从logstash-core jar文件名获取
+	// Logstash: logstash-core
 	if strings.Contains(processNameLower, "logstash") {
 		logger.Debug("getJavaAppVersionFromConfig: 尝试Logstash配置方法")
 		logstashPaths := []string{
-			"/opt/logstash",
-			"/usr/share/logstash",
+			filepath.Join("/opt/logstash", "logstash-core", "lib", "logstash-core"),
+			filepath.Join("/usr/share/logstash", "logstash-core", "lib", "logstash-core"),
 		}
-		for _, logstashPath := range logstashPaths {
-			coreLibPath := filepath.Join(logstashPath, "logstash-core", "lib", "logstash-core")
-			logger.Debug("getJavaAppVersionFromConfig: 检查Logstash路径: %s", coreLibPath)
-			if entries, err := os.ReadDir(coreLibPath); err == nil {
-				logger.Debug("getJavaAppVersionFromConfig: 路径存在，找到 %d 个文件", len(entries))
-				for _, entry := range entries {
-					if strings.HasPrefix(entry.Name(), "logstash-core-") && strings.HasSuffix(entry.Name(), ".jar") {
-						re := regexp.MustCompile(`logstash-core-([\d.]+)\.jar`)
-						matches := re.FindStringSubmatch(entry.Name())
-						if len(matches) > 1 {
-							version := matches[1]
-							logger.Debug("getJavaAppVersionFromConfig: 从Logstash jar文件名获取到版本: %s", version)
-							return version
-						}
+		for _, coreLibPath := range logstashPaths {
+			if version := findVersionInLibDirWithPriority(coreLibPath, []*regexp.Regexp{getMainJarRegex("logstash")}, nil); version != "" {
+				return version
+			}
+		}
+	}
+
+	// Tomcat: catalina.jar
+	if strings.Contains(processNameLower, "tomcat") {
+		logger.Debug("getJavaAppVersionFromConfig: 尝试Tomcat配置方法")
+		tomcatLibPaths := []string{
+			"/usr/share/tomcat/lib",
+			"/opt/tomcat/lib",
+		}
+		for _, libPath := range tomcatLibPaths {
+			if version := findVersionInLibDirWithPriority(libPath, []*regexp.Regexp{getMainJarRegex("tomcat")}, nil); version != "" {
+				return version
+			}
+		}
+	}
+
+	// Jenkins: jenkins.war
+	if strings.Contains(processNameLower, "jenkins") {
+		logger.Debug("getJavaAppVersionFromConfig: 尝试Jenkins配置方法")
+		jenkinsPaths := []string{
+			"/usr/share/jenkins",
+			"/opt/jenkins",
+			"/var/lib/jenkins",
+		}
+		for _, p := range jenkinsPaths {
+			if version := findVersionInLibDirWithPriority(p, []*regexp.Regexp{getMainJarRegex("jenkins")}, nil); version != "" {
+				return version
+			}
+		}
+	}
+
+	// Zookeeper: lib
+	if strings.Contains(processNameLower, "zookeeper") {
+		logger.Debug("getJavaAppVersionFromConfig: 尝试Zookeeper配置方法")
+		zkLib := []string{
+			"/usr/share/zookeeper/lib",
+			"/opt/zookeeper/lib",
+		}
+		for _, libPath := range zkLib {
+			if version := findVersionInLibDirWithPriority(libPath, []*regexp.Regexp{getMainJarRegex("zookeeper")}, nil); version != "" {
+				return version
+			}
+		}
+	}
+
+	// Cassandra: lib
+	if strings.Contains(processNameLower, "cassandra") {
+		logger.Debug("getJavaAppVersionFromConfig: 尝试Cassandra配置方法")
+		casLib := []string{
+			"/usr/share/cassandra/lib",
+			"/opt/cassandra/lib",
+		}
+		for _, libPath := range casLib {
+			if version := findVersionInLibDirWithPriority(libPath, []*regexp.Regexp{getMainJarRegex("cassandra")}, nil); version != "" {
+				return version
+			}
+		}
+	}
+
+	// Solr: server/lib
+	if strings.Contains(processNameLower, "solr") {
+		logger.Debug("getJavaAppVersionFromConfig: 尝试Solr配置方法")
+		solrLib := []string{
+			"/opt/solr/server/lib",
+			"/usr/share/solr/server/lib",
+		}
+		for _, libPath := range solrLib {
+			if version := findVersionInLibDirWithPriority(libPath, []*regexp.Regexp{getMainJarRegex("solr")}, nil); version != "" {
+				return version
+			}
+		}
+	}
+
+	// Nexus: lib 目录
+	if strings.Contains(processNameLower, "nexus") {
+		logger.Debug("getJavaAppVersionFromConfig: 尝试Nexus配置方法")
+		nexusLib := []string{
+			"/opt/sonatype/nexus/lib",
+			"/usr/share/sonatype/nexus/lib",
+			"/usr/share/nexus/lib",
+			"/opt/nexus/lib",
+		}
+		for _, libPath := range nexusLib {
+			if version := findVersionInLibDirWithPriority(libPath, []*regexp.Regexp{getMainJarRegex("nexus")}, nil); version != "" {
+				return version
+			}
+		}
+	}
+
+	// ActiveMQ: lib 目录
+	if strings.Contains(processNameLower, "activemq") {
+		logger.Debug("getJavaAppVersionFromConfig: 尝试ActiveMQ配置方法")
+		amqLib := []string{
+			"/opt/activemq/lib",
+			"/usr/share/activemq/lib",
+		}
+		for _, libPath := range amqLib {
+			if version := findVersionInLibDirWithPriority(libPath, []*regexp.Regexp{getMainJarRegex("activemq")}, nil); version != "" {
+				return version
+			}
+		}
+	}
+
+	// Spark: jars 目录
+	if strings.Contains(processNameLower, "spark") {
+		logger.Debug("getJavaAppVersionFromConfig: 尝试Spark配置方法")
+		sparkJars := []string{
+			"/opt/spark/jars",
+			"/usr/lib/spark/jars",
+			"/usr/share/spark/jars",
+		}
+		for _, libPath := range sparkJars {
+			if version := findVersionInLibDirWithPriority(libPath, []*regexp.Regexp{getMainJarRegex("spark")}, nil); version != "" {
+				return version
+			}
+		}
+	}
+
+	// 容器环境兜底：尝试获取镜像 tag 作为版本
+	if version := getVersionFromContainerImage(processName); version != "" {
+		logger.Debug("getJavaAppVersionFromConfig: 从容器镜像获取到版本: %s", version)
+		return version
+	}
+
+	logger.Debug("getJavaAppVersionFromConfig: 未找到可用的配置来源")
+	return ""
+}
+
+// getVersionFromContainerImage 尝试从容器镜像名提取版本号
+func getVersionFromContainerImage(processName string) string {
+	// 检查是否在容器内
+	if !isRunningInContainer() {
+		return ""
+	}
+
+	// 优先尝试 docker 环境变量
+	if image := getDockerImageFromEnviron(); image != "" {
+		if version := extractVersionFromImageTag(image, processName); version != "" {
+			return version
+		}
+	}
+
+	// 兜底尝试 docker inspect 当前容器ID
+	if image := getDockerImageByInspect(); image != "" {
+		if version := extractVersionFromImageTag(image, processName); version != "" {
+			return version
+		}
+	}
+
+	return ""
+}
+
+// isRunningInContainer 判断当前进程是否在容器内
+func isRunningInContainer() bool {
+	data, err := os.ReadFile("/proc/1/cgroup")
+	if err != nil {
+		return false
+	}
+	content := string(data)
+	return strings.Contains(content, "docker") || strings.Contains(content, "kubepods") || strings.Contains(content, "containerd")
+}
+
+// getDockerImageFromEnviron 从环境变量中获取镜像名
+func getDockerImageFromEnviron() string {
+	data, err := os.ReadFile("/proc/1/environ")
+	if err != nil {
+		return ""
+	}
+	envs := strings.Split(string(data), "\x00")
+	for _, env := range envs {
+		if strings.HasPrefix(env, "DOCKER_IMAGE=") {
+			return strings.TrimPrefix(env, "DOCKER_IMAGE=")
+		}
+		if strings.HasPrefix(env, "IMAGE_NAME=") {
+			return strings.TrimPrefix(env, "IMAGE_NAME=")
+		}
+	}
+	return ""
+}
+
+// getDockerImageByInspect 通过 docker inspect 获取当前容器镜像名
+func getDockerImageByInspect() string {
+	// 获取当前容器ID
+	cid, err := os.ReadFile("/proc/self/cgroup")
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(cid), "\n")
+	for _, line := range lines {
+		parts := strings.Split(line, "/")
+		if len(parts) > 2 {
+			id := parts[len(parts)-1]
+			if len(id) >= 12 {
+				// docker inspect
+				out, err := exec.Command("docker", "inspect", "--format", "{{.Config.Image}}", id).Output()
+				if err == nil {
+					return strings.TrimSpace(string(out))
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// extractVersionFromImageTag 从镜像名中提取 tag 作为版本
+func extractVersionFromImageTag(image, processName string) string {
+	// 例：elastic/elasticsearch:8.11.1
+	parts := strings.Split(image, ":")
+	if len(parts) == 2 && parts[1] != "" {
+		return parts[1]
+	}
+	return ""
+}
+
+// helper: 提取 -Dxxx=yyy JVM 属性
+func extractJavaPropsFromCmdLine(cmdLine string) map[string]string {
+	props := make(map[string]string)
+	// 匹配 -Dkey=value，其中 value 支持引号或无引号
+	re := regexp.MustCompile(`-D([\w\.\-]+)=(".*?"|\S+)`)
+	matches := re.FindAllStringSubmatch(cmdLine, -1)
+	for _, m := range matches {
+		key := strings.TrimSpace(m[1])
+		val := strings.TrimSpace(m[2])
+		val = strings.Trim(val, `"`)
+		props[key] = val
+	}
+	return props
+}
+
+// helper: 提取 -cp/-classpath 的各个 classpath 项（Linux 使用 ':' 分隔）
+func extractClasspathEntries(cmdLine string) []string {
+	var entries []string
+	// 支持引号与非引号两种写法
+	re := regexp.MustCompile(`(?:^|\s)-(?:cp|classpath)\s+("[^"]+"|\S+)`)
+	matches := re.FindAllStringSubmatch(cmdLine, -1)
+	for _, m := range matches {
+		cp := strings.TrimSpace(m[1])
+		cp = strings.Trim(cp, `"`)
+		if cp == "" {
+			continue
+		}
+		// Linux 下以 ':' 分隔多个路径项
+		parts := strings.Split(cp, ":")
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				entries = append(entries, p)
+			}
+		}
+	}
+	return entries
+}
+
+// 获取真实应用名称（如 elasticsearch、kafka 等）。
+// 规则：
+// - 非 Java 进程：返回进程名（小写）。
+// - Java 进程：按优先级进行识别：exe_path 包含应用名 -> 命令行包含主程序 jar -> classpath 目录/文件包含主程序 jar -> JVM 属性路径包含主程序 jar -> 最后返回 "java" 或 "unknown"。
+func getProcessAppName(processName, exePath, cmdLine string) string {
+    nameLower := strings.ToLower(strings.TrimSpace(processName))
+    exeLower := strings.ToLower(strings.TrimSpace(exePath))
+
+    // 非 Java 进程直接使用进程名
+    if !isJavaProcess(processName) {
+        if nameLower != "" {
+            return nameLower
+        }
+        return "unknown"
+    }
+
+    // 1) 根据可执行路径快速识别（如 /usr/share/elasticsearch/jdk/bin/java）
+    for app := range mainJarRegexTable {
+        if strings.Contains(exeLower, app) {
+            return app
+        }
+    }
+
+    // 2) 命令行中直接包含主程序 jar/war 名称
+    for app, re := range mainJarRegexTable {
+        if re.MatchString(cmdLine) {
+            return app
+        }
+    }
+
+    // 3) 解析 -cp/-classpath 项，检查 jar 或目录内是否有主程序 jar
+    cpEntries := extractClasspathEntries(cmdLine)
+    if len(cpEntries) > 0 {
+        for _, entry := range cpEntries {
+            e := strings.TrimSpace(entry)
+            if e == "" {
+                continue
+            }
+            ext := strings.ToLower(filepath.Ext(e))
+            if ext == ".jar" || ext == ".war" {
+                base := filepath.Base(e)
+                for app, re := range mainJarRegexTable {
+                    if re.MatchString(base) {
+                        return app
+                    }
+                }
+            } else {
+                // 视为目录，检查是否存在主程序 jar
+                dir := e
+                if strings.HasSuffix(dir, "/*") || strings.HasSuffix(dir, "\\*") {
+                    dir = strings.TrimSuffix(dir, "/*")
+                    dir = strings.TrimSuffix(dir, "\\*")
+                }
+                if app := findAppInDirByMainJar(dir); app != "" {
+                    return app
+                }
+            }
+        }
+    }
+
+    // 4) JVM 属性路径识别（与版本识别一致的路径模式）
+    props := extractJavaPropsFromCmdLine(cmdLine)
+    if home := firstNonEmpty(props["es.path.home"], props["path.home"]); home != "" {
+        if app := findAppInDirByRegex(filepath.Join(home, "lib"), getMainJarRegex("elasticsearch")); app != "" { return app }
+    }
+    if home := props["logstash.home"]; home != "" {
+        coreLib := filepath.Join(home, "logstash-core", "lib", "logstash-core")
+        if app := findAppInDirByRegex(coreLib, getMainJarRegex("logstash")); app != "" { return app }
+    }
+    if home := firstNonEmpty(props["kafka.home"], props["kafka.base"]); home != "" {
+        if app := findAppInDirByRegex(filepath.Join(home, "libs"), getMainJarRegex("kafka")); app != "" { return app }
+    }
+    if home := firstNonEmpty(props["catalina.base"], props["catalina.home"]); home != "" {
+        if app := findAppInDirByRegex(filepath.Join(home, "lib"), getMainJarRegex("tomcat")); app != "" { return app }
+    }
+    if home := firstNonEmpty(props["jenkins.home"], props["JENKINS_HOME"]); home != "" {
+        if app := findAppInDirByRegex(home, getMainJarRegex("jenkins")); app != "" { return app }
+    }
+    if home := props["zookeeper.home"]; home != "" {
+        if app := findAppInDirByRegex(filepath.Join(home, "lib"), getMainJarRegex("zookeeper")); app != "" { return app }
+    }
+    if home := firstNonEmpty(props["cassandra.home"], props["cassandra.base"]); home != "" {
+        if app := findAppInDirByRegex(filepath.Join(home, "lib"), getMainJarRegex("cassandra")); app != "" { return app }
+    }
+    if home := firstNonEmpty(props["solr.install.dir"], props["solr.home"]); home != "" {
+        if app := findAppInDirByRegex(filepath.Join(home, "server", "lib"), getMainJarRegex("solr")); app != "" { return app }
+        if app := findAppInDirByRegex(filepath.Join(home, "server", "solr", "lib"), getMainJarRegex("solr")); app != "" { return app }
+    }
+
+    // 5) 兜底：如果进程名包含已知应用名
+    for app := range mainJarRegexTable {
+        if strings.Contains(nameLower, app) {
+            return app
+        }
+    }
+
+    // 无法识别时返回 "java"
+    if nameLower != "" {
+        return nameLower
+    }
+    return "unknown"
+}
+
+// 在目录内检查是否存在任意主程序 jar，找到则返回应用名
+func findAppInDirByMainJar(dir string) string {
+    entries, err := os.ReadDir(dir)
+    if err != nil {
+        return ""
+    }
+    for _, entry := range entries {
+        name := entry.Name()
+        for app, re := range mainJarRegexTable {
+            if re.MatchString(name) {
+                return app
+            }
+        }
+    }
+    return ""
+}
+
+// 在目录内按特定应用的主程序正则查找，存在则返回该应用名
+func findAppInDirByRegex(dir string, re *regexp.Regexp) string {
+    if re == nil {
+        return ""
+    }
+    entries, err := os.ReadDir(dir)
+    if err != nil {
+        return ""
+    }
+    for _, entry := range entries {
+        if re.MatchString(entry.Name()) {
+            return getAppNameByRegex(re)
+        }
+    }
+    return ""
+}
+
+// 从正则对象反查应用名键（用于返回统一的小写应用名）
+func getAppNameByRegex(re *regexp.Regexp) string {
+    for app, r := range mainJarRegexTable {
+        if r == re {
+            return app
+        }
+    }
+    return ""
+}
+
+// helper: 在给定目录内查找 jar/war 文件并优先解析主程序版本
+// 集中维护：主程序 jar/war 文件名匹配正则
+var mainJarRegexTable = map[string]*regexp.Regexp{
+	"elasticsearch": regexp.MustCompile(`(?i)elasticsearch-([\d][\d\w\.-]+)\.jar`),
+	"logstash":      regexp.MustCompile(`(?i)logstash-core-([\d][\d\w\.-]+)\.jar`),
+	"kafka":         regexp.MustCompile(`(?i)kafka_[\d.]+-([\d][\d\w\.-]+)\.jar`),
+	"tomcat":        regexp.MustCompile(`(?i)catalina\.jar`),
+	"jenkins":       regexp.MustCompile(`(?i)jenkins\.war`),
+	"zookeeper":     regexp.MustCompile(`(?i)zookeeper-([\d][\d\w\.-]+)\.jar`),
+	"cassandra":     regexp.MustCompile(`(?i)cassandra-all-([\d][\d\w\.-]+)\.jar`),
+	"solr":          regexp.MustCompile(`(?i)solr-core-([\d][\d\w\.-]+)\.jar`),
+	// 扩展应用
+	"nexus":    regexp.MustCompile(`(?i)(?:nexus|org\.sonatype\.nexus\.bootstrap)-([\d][\d\w\.-]+)\.(?:jar|war)`),
+	"activemq": regexp.MustCompile(`(?i)activemq(?:-all|-broker|-client|-core)?-([\d][\d\w\.-]+)\.jar`),
+	"spark":    regexp.MustCompile(`(?i)spark-core[_\d\.]*-([\d][\d\w\.-]+)\.jar`),
+}
+
+// 返回所有主程序正则，用于命令行与 classpath 扫描
+func getAllMainJarRegexes() []*regexp.Regexp {
+	regs := make([]*regexp.Regexp, 0, len(mainJarRegexTable))
+	for _, r := range mainJarRegexTable {
+		regs = append(regs, r)
+	}
+	return regs
+}
+
+// 根据应用名获取主程序正则（大小写不敏感）
+func getMainJarRegex(app string) *regexp.Regexp {
+	return mainJarRegexTable[strings.ToLower(app)]
+}
+
+func findVersionInLibDirWithPriority(libPath string, mainJarRegexes []*regexp.Regexp, fallbackJarRegex *regexp.Regexp) string {
+	logger.Debug("findVersionInLibDirWithPriority: 扫描目录: %s", libPath)
+	entries, err := os.ReadDir(libPath)
+	if err != nil {
+		logger.Debug("findVersionInLibDirWithPriority: 目录不可读: %v", err)
+		return ""
+	}
+	// 优先遍历主程序 jar
+	for _, mainRegex := range mainJarRegexes {
+		for _, entry := range entries {
+			name := entry.Name()
+			if m := mainRegex.FindStringSubmatch(name); len(m) > 1 {
+				version := strings.TrimSpace(m[1])
+				logger.Debug("findVersionInLibDirWithPriority: 主程序 jar 从文件名提取到版本: %s", version)
+				return version
+			}
+			// 如果是 jar/war，读取 MANIFEST
+			ext := strings.ToLower(filepath.Ext(name))
+			if ext == ".jar" || ext == ".war" {
+				full := filepath.Join(libPath, name)
+				if mainRegex.MatchString(name) {
+					if version := getVersionFromJarManifest(full); version != "" {
+						logger.Debug("findVersionInLibDirWithPriority: 主程序 jar 从 MANIFEST 获取到版本: %s", version)
+						return version
 					}
 				}
 			}
 		}
 	}
+	// 主程序 jar 未找到时，兜底遍历依赖库 jar
+	for _, entry := range entries {
+		name := entry.Name()
+		if fallbackJarRegex != nil {
+			if m := fallbackJarRegex.FindStringSubmatch(name); len(m) > 1 {
+				version := strings.TrimSpace(m[1])
+				logger.Debug("findVersionInLibDirWithPriority: 依赖库 jar 从文件名提取到版本: %s", version)
+				return version
+			}
+			ext := strings.ToLower(filepath.Ext(name))
+			if ext == ".jar" || ext == ".war" {
+				full := filepath.Join(libPath, name)
+				if version := getVersionFromJarManifest(full); version != "" {
+					logger.Debug("findVersionInLibDirWithPriority: 依赖库 jar 从 MANIFEST 获取到版本: %s", version)
+					return version
+				}
+			}
+		}
+	}
+	return ""
+}
 
-	logger.Debug("getJavaAppVersionFromConfig: 无法从配置获取版本")
+// helper: 返回第一个非空字符串
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
 	return ""
 }

@@ -265,13 +265,14 @@ func hasIptablesRules() bool {
 
 // PortUseInfo 端口使用信息结构
 type PortUseInfo struct {
-	Protocol string
-	IP       string
-	Port     string
-	State    string
-	Process  string // 进程名
-	ExePath  string // 可执行文件路径
-	Version  string // 版本号
+    Protocol string
+    IP       string
+    Port     string
+    State    string
+    Process  string // 进程名
+    ExePath  string // 可执行文件路径
+    Version  string // 版本号
+    App      string // 真实应用名称（如 elasticsearch、kafka 等），无匹配则为进程名或 unknown
 }
 
 // GetPortsUseInfo 获取端口使用信息
@@ -408,18 +409,30 @@ func getPortsFromProcNet(filePath, protocol string, allowedStates []string) ([]P
 		}
 
 		// 如果找到了进程，填充详细信息
-		if processDetail != nil {
-			portInfo.Process = processDetail.Name
-			portInfo.ExePath = processDetail.ExePath
+        if processDetail != nil {
+            portInfo.Process = processDetail.Name
+            portInfo.ExePath = processDetail.ExePath
 
-			// 尝试获取版本号（传递命令行参数）
-			if version := getProcessVersion(processDetail.Name, processDetail.ExePath, processDetail.CmdLine); version != "" {
-				portInfo.Version = version
-			}
-			logger.Debug("getPortsFromProcNet: 端口 %s:%s 匹配到进程: %s (路径: %s, 版本: %s)", ip, port, portInfo.Process, portInfo.ExePath, portInfo.Version)
-		} else {
-			portInfo.Process = "unknown"
-		}
+            // 尝试获取版本号（传递命令行参数）
+            if version := getProcessVersion(processDetail.Name, processDetail.ExePath, processDetail.CmdLine); version != "" {
+                portInfo.Version = version
+            }
+            // 识别真实应用名称
+            if app := getProcessAppName(processDetail.Name, processDetail.ExePath, processDetail.CmdLine); app != "" {
+                portInfo.App = app
+            } else {
+                // 非Java或无法识别时，默认使用进程名
+                if processDetail.Name != "" {
+                    portInfo.App = strings.ToLower(processDetail.Name)
+                } else {
+                    portInfo.App = "unknown"
+                }
+            }
+            logger.Debug("getPortsFromProcNet: 端口 %s:%s 匹配到进程: %s (路径: %s, 版本: %s)", ip, port, portInfo.Process, portInfo.ExePath, portInfo.Version)
+        } else {
+            portInfo.Process = "unknown"
+            portInfo.App = "unknown"
+        }
 
 		ports = append(ports, portInfo)
 	}
