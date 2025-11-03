@@ -85,6 +85,12 @@ curl http://localhost:9102/metrics
 
 # 查看特定指标
 curl http://localhost:9102/metrics | grep linux_security_os_version_info
+
+# 查看所有指标
+curl http://localhost:9102/metrics
+
+# 查看端口使用信息
+curl http://localhost:9102/metrics | grep linux_security_ports_use_info
 ```
 
 ## 配置参数详解
@@ -101,6 +107,14 @@ curl http://localhost:9102/metrics | grep linux_security_os_version_info
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--collector.port-states` | `LISTEN` | 要采集的TCP端口状态，多个状态用逗号分隔 |
+
+### 收集器配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--collector.go-metrics` | `false` | 是否采集Go自身性能指标（go_*指标），默认禁用 |
+| `--collector.services-enabled` | `true` | 是否只采集启用的服务，默认true（只采集is_enabled=true的服务） |
+| `--collector.services-running` | `false` | 是否只采集运行中的服务，默认false（不过滤运行状态） |
 
 ### 日志配置
 
@@ -140,6 +154,18 @@ curl http://localhost:9102/metrics | grep linux_security_os_version_info
 
 # 使用JSON日志格式
 ./security-exporter --log.level=info --log.format=json
+
+# 启用Go自身性能指标采集
+./security-exporter --collector.go-metrics
+
+# 采集所有服务（包括未启用和未运行的服务）
+./security-exporter --collector.services-enabled=false
+
+# 只采集运行中的服务
+./security-exporter --collector.services-running=true
+
+# 只采集既启用又运行的服务
+./security-exporter --collector.services-enabled=true --collector.services-running=true
 ```
 
 ## Prometheus配置
@@ -205,8 +231,24 @@ linux_security_firewall_enabled{firewall_type="firewalld", is_running="true"} ==
 # 检查端口使用情况
 linux_security_ports_use_info{process="sshd", port="22"}
 
+# 查看特定协议的端口
+linux_security_ports_use_info{protocol="tcp", state="LISTEN"}
+
+# 查看端口详细信息（包含版本和应用名称）
+linux_security_ports_use_info{app_name="nginx", version!=""}
+
 # 检查密码策略
 linux_security_login_defs_info{info_key="PASS_MIN_LEN", info_value="num"} >= 10
+
+# 查看系统目标信息（运行级别）
+linux_security_system_target_info{current_target="multi-user.target"}
+
+# 查看服务信息
+linux_security_services_info{service_name="sshd", is_running="true"}
+
+# 查看系统补丁和包信息
+linux_security_last_patch_time{package_type!="unknown"}
+linux_security_package_count{package_type="dpkg"}
 ```
 
 ## 故障排除

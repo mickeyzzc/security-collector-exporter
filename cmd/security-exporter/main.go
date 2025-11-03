@@ -20,6 +20,11 @@ func main() {
 		return
 	}
 
+	// 如果启用Go性能指标，注册Go runtime collector
+	if cfg.EnableGoMetrics {
+		prometheus.MustRegister(prometheus.NewGoCollector())
+	}
+
 	// 创建收集器并注册
 	securityCollector := collector.NewSecurityCollector(cfg)
 	prometheus.MustRegister(securityCollector)

@@ -5,9 +5,48 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"security-exporter/pkg/logger"
 )
+
+// versionCache 版本号缓存，key为可执行文件路径，value为版本号
+var versionCache = struct {
+	sync.RWMutex
+	cache map[string]string
+}{
+	cache: make(map[string]string),
+}
+
+// getCachedProcessVersion 获取缓存的进程版本号，如果没有缓存则采集并缓存
+func getCachedProcessVersion(processName, exePath, cmdLine string) string {
+	// 如果没有可执行路径，直接调用原始函数
+	if exePath == "" {
+		return getProcessVersion(processName, exePath, cmdLine)
+	}
+
+	// 尝试从缓存读取
+	versionCache.RLock()
+	if version, found := versionCache.cache[exePath]; found {
+		versionCache.RUnlock()
+		logger.Debug("getCachedProcessVersion: 从缓存获取版本，路径: %s, 版本: %s", exePath, version)
+		return version
+	}
+	versionCache.RUnlock()
+
+	// 缓存中没有，调用原始函数采集版本
+	version := getProcessVersion(processName, exePath, cmdLine)
+
+	// 如果采集到版本，存入缓存
+	if version != "" {
+		versionCache.Lock()
+		versionCache.cache[exePath] = version
+		versionCache.Unlock()
+		logger.Debug("getCachedProcessVersion: 版本已缓存，路径: %s, 版本: %s", exePath, version)
+	}
+
+	return version
+}
 
 // FirewallInfo 防火墙信息结构
 type FirewallInfo struct {
@@ -265,14 +304,14 @@ func hasIptablesRules() bool {
 
 // PortUseInfo 端口使用信息结构
 type PortUseInfo struct {
-    Protocol string
-    IP       string
-    Port     string
-    State    string
-    Process  string // 进程名
-    ExePath  string // 可执行文件路径
-    Version  string // 版本号
-    App      string // 真实应用名称（如 elasticsearch、kafka 等），无匹配则为进程名或 unknown
+	Protocol string
+	IP       string
+	Port     string
+	State    string
+	Process  string // 进程名
+	ExePath  string // 可执行文件路径
+	Version  string // 版本号
+	App      string // 真实应用名称（如 elasticsearch、kafka 等），无匹配则为进程名或 unknown
 }
 
 // GetPortsUseInfo 获取端口使用信息
@@ -409,30 +448,30 @@ func getPortsFromProcNet(filePath, protocol string, allowedStates []string) ([]P
 		}
 
 		// 如果找到了进程，填充详细信息
-        if processDetail != nil {
-            portInfo.Process = processDetail.Name
-            portInfo.ExePath = processDetail.ExePath
+		if processDetail != nil {
+			portInfo.Process = processDetail.Name
+			portInfo.ExePath = processDetail.ExePath
 
-            // 尝试获取版本号（传递命令行参数）
-            if version := getProcessVersion(processDetail.Name, processDetail.ExePath, processDetail.CmdLine); version != "" {
-                portInfo.Version = version
-            }
-            // 识别真实应用名称
-            if app := getProcessAppName(processDetail.Name, processDetail.ExePath, processDetail.CmdLine); app != "" {
-                portInfo.App = app
-            } else {
-                // 非Java或无法识别时，默认使用进程名
-                if processDetail.Name != "" {
-                    portInfo.App = strings.ToLower(processDetail.Name)
-                } else {
-                    portInfo.App = "unknown"
-                }
-            }
-            logger.Debug("getPortsFromProcNet: 端口 %s:%s 匹配到进程: %s (路径: %s, 版本: %s)", ip, port, portInfo.Process, portInfo.ExePath, portInfo.Version)
-        } else {
-            portInfo.Process = "unknown"
-            portInfo.App = "unknown"
-        }
+			// 尝试获取版本号（使用缓存避免重复采集）
+			if version := getCachedProcessVersion(processDetail.Name, processDetail.ExePath, processDetail.CmdLine); version != "" {
+				portInfo.Version = version
+			}
+			// 识别真实应用名称
+			if app := getProcessAppName(processDetail.Name, processDetail.ExePath, processDetail.CmdLine); app != "" {
+				portInfo.App = app
+			} else {
+				// 非Java或无法识别时，默认使用进程名
+				if processDetail.Name != "" {
+					portInfo.App = strings.ToLower(processDetail.Name)
+				} else {
+					portInfo.App = "unknown"
+				}
+			}
+			logger.Debug("getPortsFromProcNet: 端口 %s:%s 匹配到进程: %s (路径: %s, 版本: %s)", ip, port, portInfo.Process, portInfo.ExePath, portInfo.Version)
+		} else {
+			portInfo.Process = "unknown"
+			portInfo.App = "unknown"
+		}
 
 		ports = append(ports, portInfo)
 	}

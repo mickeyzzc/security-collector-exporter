@@ -29,6 +29,8 @@
 
 ### 5. 系统维护
 - [ ] **系统补丁信息** - `linux_security_last_patch_time{package_type!="unknown"}`
+  - 支持的包管理器类型：rpm（RedHat/CentOS）、dpkg（Debian/Ubuntu）、pacman（Arch Linux）
+- [ ] **已安装包数量** - `linux_security_package_count{package_type!="unknown"}`
 
 ## Prometheus告警规则
 
@@ -206,10 +208,11 @@ groups:
 ### 防火墙类型检查
 
 ```promql
-# 检查特定防火墙类型
-linux_security_firewall_enabled{firewall_type="firewalld"}
-linux_security_firewall_enabled{firewall_type="ufw"}
-linux_security_firewall_enabled{firewall_type="iptables"}
+# 检查特定防火墙类型（支持firewalld、ufw、iptables、nftables）
+linux_security_firewall_enabled{firewall_type="firewalld"}    # RedHat/CentOS 7+
+linux_security_firewall_enabled{firewall_type="ufw"}          # Ubuntu/Debian
+linux_security_firewall_enabled{firewall_type="iptables"}    # 传统防火墙
+linux_security_firewall_enabled{firewall_type="nftables"}     # 新式防火墙
 
 # 检查防火墙是否正在运行
 linux_security_firewall_enabled{is_running="true"}
@@ -217,6 +220,9 @@ linux_security_firewall_enabled{firewall_type="firewalld", is_running="true"}
 
 # 检查防火墙已启用但未运行
 linux_security_firewall_enabled{firewall_type!="none", is_running="false"} == 1
+
+# 检查防火墙未启用
+linux_security_firewall_enabled{firewall_type="none"} == 1
 
 # 统计启用的防火墙数量
 sum(linux_security_firewall_enabled)
@@ -235,8 +241,22 @@ linux_security_ports_use_info{port="22"}
 linux_security_ports_use_info{port="80"}
 linux_security_ports_use_info{port="443"}
 
+# 按协议和状态查询端口
+linux_security_ports_use_info{protocol="tcp", state="LISTEN"}
+linux_security_ports_use_info{protocol="tcp", state="ESTABLISHED"}
+
+# 查询特定应用占用的端口（Java应用等）
+linux_security_ports_use_info{app_name="elasticsearch"}
+linux_security_ports_use_info{app_name="kafka"}
+
+# 查询带有版本信息的端口
+linux_security_ports_use_info{version!=""}
+
 # 统计各进程的端口数量
 count by (process) (linux_security_ports_use_info)
+
+# 统计各应用的端口数量
+count by (app_name) (linux_security_ports_use_info)
 
 # 查询未知进程占用的端口
 linux_security_ports_use_info{process="unknown"}
@@ -255,8 +275,18 @@ linux_security_services_info{is_running="true"}
 # 查询启用的服务
 linux_security_services_info{is_enabled="true"}
 
+# 按服务类型查询（systemd、init、xwindow、wayland）
+linux_security_services_info{service_type="systemd"}
+linux_security_services_info{service_type="init"}
+
 # 统计各类型服务的数量
 count by (service_type) (linux_security_services_info)
+
+# 统计运行中的服务数量
+count(linux_security_services_info{is_running="true"})
+
+# 查询X Window服务状态（服务器应禁用）
+linux_security_services_info{service_name="xwindow", is_running="true"}
 ```
 
 ### 系统维护监控
@@ -268,14 +298,17 @@ linux_security_last_patch_time
 # 查询包数量信息
 linux_security_package_count
 
-# 按包管理器类型统计
-linux_security_package_count{package_type="rpm"}
-linux_security_package_count{package_type="dpkg"}
-linux_security_package_count{package_type="pacman"}
+# 按包管理器类型统计（支持rpm、dpkg、pacman）
+linux_security_package_count{package_type="rpm"}      # RedHat/CentOS系统
+linux_security_package_count{package_type="dpkg"}     # Debian/Ubuntu系统
+linux_security_package_count{package_type="pacman"}   # Arch Linux系统
 
-# 查询未知包管理器类型
+# 查询未知包管理器类型（可能是不支持的系统或配置问题）
 linux_security_last_patch_time{package_type="unknown"}
 linux_security_package_count{package_type="unknown"}
+
+# 统计包数量趋势（需要配合Prometheus的查询功能）
+rate(linux_security_package_count[5m])
 ```
 
 ### 账户密码策略监控

@@ -371,15 +371,35 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 	servicesInfo, err := system.GetAllServicesInfo()
 	if err == nil {
 		for _, service := range servicesInfo {
-			ch <- prometheus.MustNewConstMetric(
-				c.servicesInfo,
-				prometheus.GaugeValue,
-				1, // 每个服务条目值为1
-				service.Name,
-				fmt.Sprintf("%t", service.IsRunning),
-				service.ServiceType,
-				fmt.Sprintf("%t", service.IsEnabled),
-			)
+			// 根据配置过滤服务
+			shouldCollect := true
+
+			// 如果配置为只采集启用的服务，检查服务是否启用
+			if c.config.CollectServicesEnabled {
+				if !service.IsEnabled {
+					shouldCollect = false
+				}
+			}
+
+			// 如果配置为只采集运行中的服务，检查服务是否运行
+			if c.config.CollectServicesRunning {
+				if !service.IsRunning {
+					shouldCollect = false
+				}
+			}
+
+			// 只有当服务满足所有启用的过滤条件时才采集
+			if shouldCollect {
+				ch <- prometheus.MustNewConstMetric(
+					c.servicesInfo,
+					prometheus.GaugeValue,
+					1, // 每个服务条目值为1
+					service.Name,
+					fmt.Sprintf("%t", service.IsRunning),
+					service.ServiceType,
+					fmt.Sprintf("%t", service.IsEnabled),
+				)
+			}
 		}
 	}
 
