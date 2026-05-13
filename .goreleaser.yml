@@ -1,0 +1,60 @@
+version: 2
+
+builds:
+  - id: security-exporter
+    main: ./cmd/security-exporter
+    binary: security-exporter
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -X security-exporter/pkg/config.Version={{.Version}}
+      - -X security-exporter/pkg/config.BuildDate={{.Date}}
+      - -X security-exporter/pkg/config.GitCommit={{.Commit}}
+      - -X security-exporter/pkg/config.GoVersion={{.Env.GO_VERSION}}
+    env:
+      - CGO_ENABLED=0
+
+dockers:
+  - image_templates:
+      - "ghcr.io/mickeyzzc/security-collector-exporter:{{ .Version }}-amd64"
+      - "ghcr.io/mickeyzzc/security-collector-exporter:latest-amd64"
+    build_flag_templates:
+      - --label=org.opencontainers.image.title={{.ProjectName}}
+      - --label=org.opencontainers.image.version={{.Version}}
+      - --label=org.opencontainers.image.revision={{.Commit}}
+      - --platform=linux/amd64
+    dockerfile: Dockerfile
+    use: buildx
+  - image_templates:
+      - "ghcr.io/mickeyzzc/security-collector-exporter:{{ .Version }}-arm64"
+      - "ghcr.io/mickeyzzc/security-collector-exporter:latest-arm64"
+    build_flag_templates:
+      - --label=org.opencontainers.image.title={{.ProjectName}}
+      - --label=org.opencontainers.image.version={{.Version}}
+      - --label=org.opencontainers.image.revision={{.Commit}}
+      - --platform=linux/arm64
+    dockerfile: Dockerfile
+    goarch: arm64
+    use: buildx
+
+docker_manifests:
+  - name_template: "ghcr.io/mickeyzzc/security-collector-exporter:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/mickeyzzc/security-collector-exporter:{{ .Version }}-amd64"
+      - "ghcr.io/mickeyzzc/security-collector-exporter:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/mickeyzzc/security-collector-exporter:latest"
+    image_templates:
+      - "ghcr.io/mickeyzzc/security-collector-exporter:latest-amd64"
+      - "ghcr.io/mickeyzzc/security-collector-exporter:latest-arm64"
+
+changelog:
+  use: github
+  sort: desc
+
+release:
+  github:
+    owner: mickeyzzc
+    name: security-collector-exporter

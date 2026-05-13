@@ -1,0 +1,14 @@
+version: "2"
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - gosec
+    - gocritic
+    - revive
+
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 10

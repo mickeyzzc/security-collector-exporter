@@ -37,7 +37,7 @@ fmt:
 # 代码检查
 lint:
 	@echo "Running linter..."
-	@go vet ./...
+	@golangci-lint run ./...
 
 # 清理构建文件
 clean:
