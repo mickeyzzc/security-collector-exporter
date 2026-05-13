@@ -12,69 +12,64 @@ type AccountInfo struct {
 	Username     string
 	HomeDir      string
 	Shell        string
+	UID          int
+	GID          string
 	PrimaryGroup string
 	Groups       []string
 	HasSudo      bool
 }
 
-// GetAllAccountInfo 获取所有账户信息
-func GetAllAccountInfo() ([]AccountInfo, error) {
+func parsePasswdContent(content string) []AccountInfo {
 	var accounts []AccountInfo
-
-	// 读取passwd文件
-	file, err := os.Open("/etc/passwd")
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(strings.NewReader(content))
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-
-		// 解析passwd行: username:password:uid:gid:gecos:home:shell
 		parts := strings.Split(line, ":")
 		if len(parts) < 7 {
 			continue
 		}
+		uid, _ := strconv.Atoi(parts[2])
+		accounts = append(accounts, AccountInfo{
+			Username: parts[0],
+			UID:      uid,
+			GID:      parts[3],
+			HomeDir:  parts[5],
+			Shell:    parts[6],
+		})
+	}
+	return accounts
+}
 
-		username := parts[0]
-		homeDir := parts[5]
-		shell := parts[6]
+// GetAllAccountInfo 获取所有账户信息
+func GetAllAccountInfo() ([]AccountInfo, error) {
+	content, err := os.ReadFile("/etc/passwd")
+	if err != nil {
+		return nil, err
+	}
 
-		// 获取主组名
-		primaryGroup, err := getGroupName(parts[3])
+	accounts := parsePasswdContent(string(content))
+
+	for i := range accounts {
+		primaryGroup, err := getGroupName(accounts[i].GID)
 		if err != nil {
 			primaryGroup = "unknown"
 		}
+		accounts[i].PrimaryGroup = primaryGroup
 
-		// 获取所有组
-		groups, err := getUserGroups(username)
+		groups, err := getUserGroups(accounts[i].Username)
 		if err != nil {
 			groups = []string{primaryGroup}
 		}
+		accounts[i].Groups = groups
 
-		// 检查sudo权限
-		hasSudo, err := checkSudoPermission(username)
+		hasSudo, err := checkSudoPermission(accounts[i].Username)
 		if err != nil {
 			hasSudo = false
 		}
-
-		accounts = append(accounts, AccountInfo{
-			Username:     username,
-			HomeDir:      homeDir,
-			Shell:        shell,
-			PrimaryGroup: primaryGroup,
-			Groups:       groups,
-			HasSudo:      hasSudo,
-		})
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
+		accounts[i].HasSudo = hasSudo
 	}
 
 	return accounts, nil
@@ -258,50 +253,39 @@ type ShadowMetric struct {
 	Value    float64
 }
 
-// GetAllShadowInfo 获取所有用户的shadow信息
-func GetAllShadowInfo() ([]ShadowInfo, error) {
+func parseShadowContent(content string) []ShadowInfo {
 	var shadowInfos []ShadowInfo
-
-	// 读取shadow文件
-	file, err := os.Open("/etc/shadow")
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(strings.NewReader(content))
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-
-		// 解析shadow行: username:password:lastchange:min:max:warn:inactive:expire:reserved
 		parts := strings.Split(line, ":")
 		if len(parts) < 9 {
 			continue
 		}
-
-		username := parts[0]
-		// 跳过密码字段（索引1），只获取其他信息
-		shadowInfo := ShadowInfo{
-			Username:           username,
-			LastPasswordChange: parts[2], // 最后密码修改时间
-			PasswordMinDays:    parts[3], // 密码最小有效期
-			PasswordMaxDays:    parts[4], // 密码最大有效期
-			PasswordWarnDays:   parts[5], // 密码警告天数
-			PasswordInactive:   parts[6], // 密码不活跃天数
-			AccountExpire:      parts[7], // 账户过期时间
-		}
-
-		shadowInfos = append(shadowInfos, shadowInfo)
+		shadowInfos = append(shadowInfos, ShadowInfo{
+			Username:           parts[0],
+			LastPasswordChange: parts[2],
+			PasswordMinDays:    parts[3],
+			PasswordMaxDays:    parts[4],
+			PasswordWarnDays:   parts[5],
+			PasswordInactive:   parts[6],
+			AccountExpire:      parts[7],
+		})
 	}
+	return shadowInfos
+}
 
-	if err := scanner.Err(); err != nil {
+// GetAllShadowInfo 获取所有用户的shadow信息
+func GetAllShadowInfo() ([]ShadowInfo, error) {
+	content, err := os.ReadFile("/etc/shadow")
+	if err != nil {
 		return nil, err
 	}
 
-	return shadowInfos, nil
+	return parseShadowContent(string(content)), nil
 }
 
 // GetAllShadowMetrics 获取拆分的shadow指标

@@ -13,37 +13,18 @@ type SSHConfigInfo struct {
 	Value string
 }
 
-// GetSSHConfigInfo 获取SSH配置信息
-func GetSSHConfigInfo() ([]SSHConfigInfo, error) {
+func parseSSHConfig(content string) []SSHConfigInfo {
 	var configs []SSHConfigInfo
-
-	sshConfigPath := "/etc/ssh/sshd_config"
-	if _, err := os.Stat(sshConfigPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("sshd_config not found")
-	}
-
-	content, err := os.ReadFile(sshConfigPath)
-	if err != nil {
-		return nil, err
-	}
-
-	lines := strings.Split(string(content), "\n")
-
+	lines := strings.Split(content, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-
-		// 跳过空行和注释行
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-
-		// 解析key=value格式
 		parts := strings.SplitN(line, " ", 2)
 		if len(parts) >= 2 {
 			key := strings.TrimSpace(parts[0])
 			value := strings.TrimSpace(parts[1])
-
-			// 只收集有值的配置项
 			if key != "" && value != "" {
 				configs = append(configs, SSHConfigInfo{
 					Key:   key,
@@ -52,8 +33,21 @@ func GetSSHConfigInfo() ([]SSHConfigInfo, error) {
 			}
 		}
 	}
+	return configs
+}
 
-	return configs, nil
+// GetSSHConfigInfo 获取SSH配置信息
+func GetSSHConfigInfo() ([]SSHConfigInfo, error) {
+	sshConfigPath := "/etc/ssh/sshd_config"
+	if _, err := os.Stat(sshConfigPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("sshd_config not found")
+	}
+	content, err := os.ReadFile(sshConfigPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseSSHConfig(string(content)), nil
 }
 
 // LoginDefsInfo login.defs配置信息结构
@@ -64,36 +58,20 @@ type LoginDefsInfo struct {
 	IsNumeric bool
 }
 
-// GetLoginDefsInfo 获取login.defs配置信息
-func GetLoginDefsInfo() ([]LoginDefsInfo, error) {
+func parseLoginDefs(content string) []LoginDefsInfo {
 	var configs []LoginDefsInfo
-
-	content, err := os.ReadFile("/etc/login.defs")
-	if err != nil {
-		return nil, err
-	}
-
-	lines := strings.Split(string(content), "\n")
-
+	lines := strings.Split(content, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-
-		// 跳过空行和注释行
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-
-		// 解析key value格式（用空格或制表符分隔）
 		parts := strings.Fields(line)
 		if len(parts) >= 2 {
 			key := strings.TrimSpace(parts[0])
 			value := strings.TrimSpace(parts[1])
-
-			// 只收集有值的配置项
 			if key != "" && value != "" {
-				// 检查value是否为数字
 				if numValue, err := strconv.ParseFloat(value, 64); err == nil {
-					// 是数字，设置value为"num"，并保存数值
 					configs = append(configs, LoginDefsInfo{
 						Key:       key,
 						Value:     "num",
@@ -101,7 +79,6 @@ func GetLoginDefsInfo() ([]LoginDefsInfo, error) {
 						IsNumeric: true,
 					})
 				} else {
-					// 不是数字，保持原值
 					configs = append(configs, LoginDefsInfo{
 						Key:       key,
 						Value:     value,
@@ -112,8 +89,17 @@ func GetLoginDefsInfo() ([]LoginDefsInfo, error) {
 			}
 		}
 	}
+	return configs
+}
 
-	return configs, nil
+// GetLoginDefsInfo 获取login.defs配置信息
+func GetLoginDefsInfo() ([]LoginDefsInfo, error) {
+	content, err := os.ReadFile("/etc/login.defs")
+	if err != nil {
+		return nil, err
+	}
+
+	return parseLoginDefs(string(content)), nil
 }
 
 // SELinuxConfigInfo SELinux配置信息结构
@@ -122,32 +108,18 @@ type SELinuxConfigInfo struct {
 	Value string
 }
 
-// GetSELinuxConfigInfo 获取SELinux配置信息
-func GetSELinuxConfigInfo() ([]SELinuxConfigInfo, error) {
+func parseSELinuxConfig(content string) []SELinuxConfigInfo {
 	var configs []SELinuxConfigInfo
-
-	content, err := os.ReadFile("/etc/selinux/config")
-	if err != nil {
-		return nil, err
-	}
-
-	lines := strings.Split(string(content), "\n")
-
+	lines := strings.Split(content, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-
-		// 跳过空行和注释行
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-
-		// 解析key=value格式
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) >= 2 {
 			key := strings.TrimSpace(parts[0])
 			value := strings.TrimSpace(parts[1])
-
-			// 只收集有值的配置项
 			if key != "" && value != "" {
 				configs = append(configs, SELinuxConfigInfo{
 					Key:   key,
@@ -156,8 +128,17 @@ func GetSELinuxConfigInfo() ([]SELinuxConfigInfo, error) {
 			}
 		}
 	}
+	return configs
+}
 
-	return configs, nil
+// GetSELinuxConfigInfo 获取SELinux配置信息
+func GetSELinuxConfigInfo() ([]SELinuxConfigInfo, error) {
+	content, err := os.ReadFile("/etc/selinux/config")
+	if err != nil {
+		return nil, err
+	}
+
+	return parseSELinuxConfig(string(content)), nil
 }
 
 // HostsOptionInfo hosts配置信息结构
