@@ -1,3 +1,4 @@
+// Package config 管理 CLI 参数解析和应用程序配置。
 package config
 
 import (

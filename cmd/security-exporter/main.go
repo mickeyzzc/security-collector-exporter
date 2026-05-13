@@ -1,3 +1,4 @@
+// Package main 是 Linux 安全信息 Prometheus Exporter 的入口。
 package main
 
 import (
@@ -5,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"security-exporter/internal/collector"
@@ -22,7 +24,7 @@ func main() {
 
 	// 如果启用Go性能指标，注册Go runtime collector
 	if cfg.EnableGoMetrics {
-		prometheus.MustRegister(prometheus.NewGoCollector())
+		prometheus.MustRegister(collectors.NewGoCollector())
 	}
 
 	// 创建收集器并注册
@@ -31,8 +33,8 @@ func main() {
 
 	// 注册metrics处理器
 	http.Handle(cfg.MetricsPath, promhttp.Handler())
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html>
+	http.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<html>
 			<head><title>Linux Security Exporter</title></head>
 			<body>
 			<h1>Linux Security Exporter</h1>
@@ -43,6 +45,7 @@ func main() {
 	})
 
 	log.Printf("Starting exporter on %s", cfg.ListenAddress)
+	// #nosec G114 -- Prometheus exporter 标准模式，通过外部 supervisor 控制超时
 	if err := http.ListenAndServe(cfg.ListenAddress, nil); err != nil {
 		log.Fatalf("Failed to start exporter: %v", err)
 	}

@@ -1,3 +1,4 @@
+// Package system 采集 Linux 系统安全相关信息，包括账户、SSH、防火墙、端口、服务等指标。
 package system
 
 import (
@@ -81,7 +82,7 @@ func getGroupName(gid string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -109,7 +110,7 @@ func getUserGroups(username string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -146,7 +147,7 @@ func getUserGroups(username string) ([]string, error) {
 	if err != nil {
 		return groups, nil // 如果无法读取passwd文件，返回已找到的组
 	}
-	defer passwdFile.Close()
+	defer func() { _ = passwdFile.Close() }()
 
 	passwdScanner := bufio.NewScanner(passwdFile)
 	for passwdScanner.Scan() {
@@ -190,6 +191,7 @@ func checkSudoPermission(username string) (bool, error) {
 
 	for _, path := range sudoersPaths {
 		if _, err := os.Stat(path); err == nil {
+		// #nosec G304 -- 采集系统信息需要动态路径
 			content, err := os.ReadFile(path)
 			if err != nil {
 				continue
@@ -304,7 +306,7 @@ func GetAllShadowMetrics() (*ShadowMetrics, error) {
 	if err != nil {
 		return metrics, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {

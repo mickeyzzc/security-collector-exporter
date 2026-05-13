@@ -1,3 +1,4 @@
+// Package system 采集 Linux 系统安全相关信息，包括账户、SSH、防火墙、端口、服务等指标。
 package system
 
 import (
@@ -51,6 +52,7 @@ func GetSysctlSecurityParams() []SysctlParamInfo {
 // readSysctlParam 读取单个sysctl参数，优先读/proc/sys/
 func readSysctlParam(name string) string {
 	path := "/proc/sys/" + strings.ReplaceAll(name, ".", "/")
+	// #nosec G304 -- 采集系统信息需要动态路径
 	data, err := os.ReadFile(path)
 	if err != nil {
 		logger.Debug("readSysctlParam: 读取sysctl参数失败 %s: %v", name, err)

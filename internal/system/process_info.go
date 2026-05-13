@@ -1,10 +1,11 @@
+// Package system 采集 Linux 系统安全相关信息，包括账户、SSH、防火墙、端口、服务等指标。
 package system
 
 import (
 	"archive/zip"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -187,6 +188,7 @@ func executeVersionCommand(cmd string, args []string, pattern string) string {
 		return ""
 	}
 
+	// #nosec G204 -- 需要执行系统命令获取版本信息
 	fullCmd := exec.Command(cmd, args...)
 	output, err := fullCmd.CombinedOutput()
 	if err != nil {
@@ -214,6 +216,7 @@ func getVersionFromBinary(exePath string) string {
 	logger.Debug("getVersionFromBinary: 从文件 %s 读取版本信息", exePath)
 
 	// 读取二进制文件的一部分（前1MB通常包含版本字符串）
+	// #nosec G304 -- 采集系统信息需要动态路径
 	content, err := os.ReadFile(exePath)
 	if err != nil {
 		logger.Debug("getVersionFromBinary: 无法读取文件: %v", err)
@@ -335,14 +338,14 @@ func getJavaAppVersionByHTTP(processName string) string {
 		logger.Debug("getJavaAppVersionByHTTP: HTTP请求失败: %v", err)
 		return ""
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Debug("getJavaAppVersionByHTTP: HTTP响应状态码: %d", resp.StatusCode)
 		return ""
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Debug("getJavaAppVersionByHTTP: 读取响应失败: %v", err)
 		return ""
@@ -378,9 +381,8 @@ func getJavaAppVersionByHTTP(processName string) string {
 			version := fmt.Sprintf("%v", value)
 			logger.Debug("getJavaAppVersionByHTTP: 从JSON路径获取到版本: %s", version)
 			return version
-		} else {
-			logger.Debug("getJavaAppVersionByHTTP: JSON解析失败: %v", err)
 		}
+		logger.Debug("getJavaAppVersionByHTTP: JSON解析失败: %v", err)
 	}
 
 	// 如果有正则模式，使用正则匹配
@@ -586,7 +588,7 @@ func getVersionFromJarManifest(jarPath string) string {
 		logger.Debug("getVersionFromJarManifest: 无法打开文件: %v", err)
 		return ""
 	}
-	defer jarFile.Close()
+	defer func() { _ = jarFile.Close() }()
 
 	// 定位 MANIFEST.MF
 	var manifestFile *zip.File
@@ -614,9 +616,9 @@ func getVersionFromJarManifest(jarPath string) string {
 		logger.Debug("getVersionFromJarManifest: 无法打开MANIFEST.MF: %v", err)
 		return ""
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
-	content, err := ioutil.ReadAll(rc)
+	content, err := io.ReadAll(rc)
 	if err != nil {
 		logger.Debug("getVersionFromJarManifest: 读取MANIFEST.MF失败: %v", err)
 		return ""
@@ -805,7 +807,7 @@ func getJavaAppVersionFromJar(processName string) string {
 }
 
 // getJavaAppVersionFromConfig 从配置文件或目录获取版本
-func getJavaAppVersionFromConfig(processName string, exePath string) string {
+func getJavaAppVersionFromConfig(processName string, _ string) string {
 	logger.Debug("getJavaAppVersionFromConfig: 从配置获取进程 %s 的版本", processName)
 
 	processNameLower := strings.ToLower(processName)
@@ -1045,6 +1047,7 @@ func getDockerImageByInspect() string {
 			id := parts[len(parts)-1]
 			if len(id) >= 12 {
 				// docker inspect
+				// #nosec G204 -- 需要执行系统命令获取容器镜像信息
 				out, err := exec.Command("docker", "inspect", "--format", "{{.Config.Image}}", id).Output()
 				if err == nil {
 					return strings.TrimSpace(string(out))
@@ -1056,7 +1059,7 @@ func getDockerImageByInspect() string {
 }
 
 // extractVersionFromImageTag 从镜像名中提取 tag 作为版本
-func extractVersionFromImageTag(image, processName string) string {
+func extractVersionFromImageTag(image, _ string) string {
 	// 例：elastic/elasticsearch:8.11.1
 	parts := strings.Split(image, ":")
 	if len(parts) == 2 && parts[1] != "" {

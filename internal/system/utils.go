@@ -1,3 +1,4 @@
+// Package system 采集 Linux 系统安全相关信息，包括账户、SSH、防火墙、端口、服务等指标。
 package system
 
 import (
@@ -39,6 +40,7 @@ func isProcessRunning(processName string) bool {
 
 		// 读取进程命令行
 		cmdlinePath := fmt.Sprintf("/proc/%s/cmdline", pid)
+		// #nosec G304 -- 采集系统信息需要动态路径
 		if content, err := os.ReadFile(cmdlinePath); err == nil {
 			cmdline := string(content)
 			// 检查命令行是否包含进程名
@@ -52,6 +54,9 @@ func isProcessRunning(processName string) bool {
 }
 
 // getProcessByInode 通过inode获取进程名
+// TODO: 未来端口采集重构时会启用
+//nolint:unused
+// TODO: 未来端口采集重构时会启用
 func getProcessByInode(line string) string {
 	logger.Debug("getProcessByInode: 开始解析行: %s", line)
 
@@ -138,6 +143,7 @@ func getProcessName(pid string) string {
 
 	// 读取进程状态文件
 	statusPath := fmt.Sprintf("/proc/%s/status", pid)
+	// #nosec G304 -- 采集系统信息需要动态路径
 	if content, err := os.ReadFile(statusPath); err == nil {
 		lines := strings.Split(string(content), "\n")
 		for _, line := range lines {
@@ -153,13 +159,14 @@ func getProcessName(pid string) string {
 
 	// 如果无法读取status文件，尝试读取comm文件
 	commPath := fmt.Sprintf("/proc/%s/comm", pid)
-	if content, err := os.ReadFile(commPath); err == nil {
+	// #nosec G304 -- 采集系统信息需要动态路径
+	content, err := os.ReadFile(commPath)
+	if err == nil {
 		name := strings.TrimSpace(string(content))
 		logger.Debug("getProcessName: 从comm文件获取到进程名: %s", name)
 		return name
-	} else {
-		logger.Debug("getProcessName: 无法读取comm文件 %s: %v", commPath, err)
 	}
+	logger.Debug("getProcessName: 无法读取comm文件 %s: %v", commPath, err)
 
 	logger.Debug("getProcessName: 无法获取PID %s 的进程名", pid)
 	return "unknown"
@@ -195,6 +202,7 @@ func getProcessDetail(pid string) *ProcessDetail {
 
 	// 获取命令行（可选，用于版本号获取）
 	cmdlinePath := fmt.Sprintf("/proc/%s/cmdline", pid)
+	// #nosec G304 -- 采集系统信息需要动态路径
 	if content, err := os.ReadFile(cmdlinePath); err == nil {
 		detail.CmdLine = strings.ReplaceAll(string(content), "\x00", " ")
 		logger.Debug("getProcessDetail: 获取到命令行: %s", detail.CmdLine)

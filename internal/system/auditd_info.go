@@ -1,3 +1,4 @@
+// Package system 采集 Linux 系统安全相关信息，包括账户、SSH、防火墙、端口、服务等指标。
 package system
 
 import (
@@ -51,6 +52,7 @@ func countAuditRules() int {
 	}
 
 	for _, path := range rulesPaths {
+		// #nosec G304 -- 采集系统信息需要动态路径
 		data, err := os.ReadFile(path)
 		if err != nil {
 			continue

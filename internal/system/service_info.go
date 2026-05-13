@@ -1,3 +1,4 @@
+// Package system 采集 Linux 系统安全相关信息，包括账户、SSH、防火墙、端口、服务等指标。
 package system
 
 import (
@@ -313,6 +314,7 @@ func isSystemdServiceRunning(serviceName string) bool {
 	// 1. 检查systemd服务状态文件
 	serviceStatePath := fmt.Sprintf("/run/systemd/system/%s.service", serviceName)
 	if _, err := os.Stat(serviceStatePath); err == nil {
+		// #nosec G304 -- 采集系统信息需要动态路径
 		if content, err := os.ReadFile(serviceStatePath); err == nil {
 			if strings.Contains(string(content), "ActiveState=active") {
 				return true
@@ -323,6 +325,7 @@ func isSystemdServiceRunning(serviceName string) bool {
 	// 2. 检查systemd服务状态文件（备用路径）
 	serviceStatePath2 := fmt.Sprintf("/run/systemd/transient/%s.service", serviceName)
 	if _, err := os.Stat(serviceStatePath2); err == nil {
+		// #nosec G304 -- 采集系统信息需要动态路径
 		if content, err := os.ReadFile(serviceStatePath2); err == nil {
 			if strings.Contains(string(content), "ActiveState=active") {
 				return true

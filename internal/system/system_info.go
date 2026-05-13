@@ -1,3 +1,4 @@
+// Package system 采集 Linux 系统安全相关信息，包括账户、SSH、防火墙、端口、服务等指标。
 package system
 
 import (
@@ -286,13 +287,14 @@ func GetSystemTargetInfo() (*SystemTargetInfo, error) {
 	defaultTargetPath := "/etc/systemd/system/default.target"
 	if target, err := os.Readlink(defaultTargetPath); err == nil {
 		// 解析符号链接路径，获取实际的目标名
-		if strings.Contains(target, "multi-user.target") {
+		switch {
+		case strings.Contains(target, "multi-user.target"):
 			info.CurrentTarget = "multi-user.target"
 			info.TargetType = "systemd"
-		} else if strings.Contains(target, "graphical.target") {
+		case strings.Contains(target, "graphical.target"):
 			info.CurrentTarget = "graphical.target"
 			info.TargetType = "systemd"
-		} else {
+		default:
 			info.CurrentTarget = target
 			info.TargetType = "systemd"
 		}
@@ -307,13 +309,14 @@ func GetSystemTargetInfo() (*SystemTargetInfo, error) {
 			line = strings.TrimSpace(line)
 			if strings.HasPrefix(line, "DefaultTarget=") {
 				target := strings.TrimSpace(strings.TrimPrefix(line, "DefaultTarget="))
-				if target == "multi-user.target" {
+				switch target {
+				case "multi-user.target":
 					info.CurrentTarget = "multi-user.target"
 					info.TargetType = "systemd"
-				} else if target == "graphical.target" {
+				case "graphical.target":
 					info.CurrentTarget = "graphical.target"
 					info.TargetType = "systemd"
-				} else {
+				default:
 					info.CurrentTarget = target
 					info.TargetType = "systemd"
 				}

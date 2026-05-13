@@ -8,7 +8,12 @@ linters:
     - gosec
     - gocritic
     - revive
+  exclusions:
+    rules:
+      - linters:
+          - revive
+        text: "stutters"
 
 issues:
-  max-issues-per-linter: 50
-  max-same-issues: 10
+  max-issues-per-linter: 100
+  max-same-issues: 50

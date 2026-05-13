@@ -1,3 +1,4 @@
+// Package logger 提供简单的日志封装，支持 debug/info/warn/error 级别。
 package logger
 
 import (

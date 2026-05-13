@@ -1,3 +1,4 @@
+// Package collector 实现 Prometheus Collector 接口，采集并暴露 Linux 安全指标。
 package collector
 
 import (

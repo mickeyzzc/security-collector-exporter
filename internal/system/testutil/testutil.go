@@ -1,3 +1,4 @@
+// Package testutil 提供测试辅助工具函数，用于管理测试数据文件。
 package testutil
 
 import (
@@ -21,6 +22,7 @@ func TestdataPath(t *testing.T, relPath string) string {
 func ReadTestdata(t *testing.T, relPath string) string {
     t.Helper()
     path := TestdataPath(t, relPath)
+    // #nosec G304 -- 测试辅助函数使用动态路径
     data, err := os.ReadFile(path)
     if err != nil {
         t.Fatalf("failed to read testdata %s: %v", path, err)
@@ -35,11 +37,11 @@ func CreateTempFile(t *testing.T, content string) string {
     if err != nil {
         t.Fatalf("failed to create temp file: %v", err)
     }
-    t.Cleanup(func() { os.Remove(f.Name()) })
+    t.Cleanup(func() { _ = os.Remove(f.Name()) })
     _, err = f.WriteString(content)
     if err != nil {
         t.Fatalf("failed to write temp file: %v", err)
     }
-    f.Close()
+    _ = f.Close()
     return f.Name()
 }

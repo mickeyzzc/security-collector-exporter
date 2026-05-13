@@ -1,3 +1,4 @@
+// Package system 采集 Linux 系统安全相关信息，包括账户、SSH、防火墙、端口、服务等指标。
 package system
 
 import (
@@ -121,19 +122,20 @@ func isFirewalldActive() bool {
 	// 检查systemd服务状态文件
 	serviceStatePath := "/run/systemd/system/firewalld.service"
 	logger.Debug("isFirewalldActive: 检查服务状态文件 %s", serviceStatePath)
-	if _, err := os.Stat(serviceStatePath); err == nil {
+	_, err := os.Stat(serviceStatePath)
+	if err != nil {
+		logger.Debug("isFirewalldActive: 服务状态文件不存在: %v", err)
+	} else {
 		logger.Debug("isFirewalldActive: 服务状态文件存在")
-		if content, err := os.ReadFile(serviceStatePath); err == nil {
+		// #nosec G304 -- 采集系统信息需要动态路径
+		content, readErr := os.ReadFile(serviceStatePath)
+		if readErr == nil {
 			isActive := strings.Contains(string(content), "ActiveState=active")
 			logger.Debug("isFirewalldActive: 服务状态文件包含 ActiveState=active: %t", isActive)
 			return isActive
-		} else {
-			logger.Debug("isFirewalldActive: 无法读取服务状态文件: %v", err)
 		}
-	} else {
-		logger.Debug("isFirewalldActive: 服务状态文件不存在: %v", err)
+		logger.Debug("isFirewalldActive: 无法读取服务状态文件: %v", readErr)
 	}
-
 	// 检查firewalld进程
 	logger.Debug("isFirewalldActive: 检查 firewalld 进程")
 	isRunning := isProcessRunning("firewalld")
@@ -148,19 +150,20 @@ func isUfwActive() bool {
 	// 检查systemd服务状态文件
 	serviceStatePath := "/run/systemd/system/ufw.service"
 	logger.Debug("isUfwActive: 检查服务状态文件 %s", serviceStatePath)
-	if _, err := os.Stat(serviceStatePath); err == nil {
+	_, err := os.Stat(serviceStatePath)
+	if err != nil {
+		logger.Debug("isUfwActive: 服务状态文件不存在: %v", err)
+	} else {
 		logger.Debug("isUfwActive: 服务状态文件存在")
-		if content, err := os.ReadFile(serviceStatePath); err == nil {
+		// #nosec G304 -- 采集系统信息需要动态路径
+		content, readErr := os.ReadFile(serviceStatePath)
+		if readErr == nil {
 			isActive := strings.Contains(string(content), "ActiveState=active")
 			logger.Debug("isUfwActive: 服务状态文件包含 ActiveState=active: %t", isActive)
 			return isActive
-		} else {
-			logger.Debug("isUfwActive: 无法读取服务状态文件: %v", err)
 		}
-	} else {
-		logger.Debug("isUfwActive: 服务状态文件不存在: %v", err)
+		logger.Debug("isUfwActive: 无法读取服务状态文件: %v", readErr)
 	}
-
 	// 检查ufw状态文件
 	// 先检查/var/lib/ufw目录是否存在
 	ufwDir := "/var/lib/ufw"
@@ -175,9 +178,8 @@ func isUfwActive() bool {
 			// 如果状态文件不存在，说明ufw可能已启动
 			logger.Debug("isUfwActive: ufw-not-booted 文件不存在，说明 ufw 可能已启动")
 			return true
-		} else {
-			logger.Debug("isUfwActive: ufw-not-booted 文件存在，说明 ufw 未启动")
 		}
+		logger.Debug("isUfwActive: ufw-not-booted 文件存在，说明 ufw 未启动")
 	}
 
 	// 检查ufw进程
@@ -194,17 +196,19 @@ func isIptablesActive() bool {
 	// 检查systemd服务状态文件
 	serviceStatePath := "/run/systemd/system/iptables.service"
 	logger.Debug("isIptablesActive: 检查服务状态文件 %s", serviceStatePath)
-	if _, err := os.Stat(serviceStatePath); err == nil {
+	_, err := os.Stat(serviceStatePath)
+	if err != nil {
+		logger.Debug("isIptablesActive: 服务状态文件不存在: %v", err)
+	} else {
 		logger.Debug("isIptablesActive: 服务状态文件存在")
-		if content, err := os.ReadFile(serviceStatePath); err == nil {
+		// #nosec G304 -- 采集系统信息需要动态路径
+		content, readErr := os.ReadFile(serviceStatePath)
+		if readErr == nil {
 			isActive := strings.Contains(string(content), "ActiveState=active")
 			logger.Debug("isIptablesActive: 服务状态文件包含 ActiveState=active: %t", isActive)
 			return isActive
-		} else {
-			logger.Debug("isIptablesActive: 无法读取服务状态文件: %v", err)
 		}
-	} else {
-		logger.Debug("isIptablesActive: 服务状态文件不存在: %v", err)
+		logger.Debug("isIptablesActive: 无法读取服务状态文件: %v", readErr)
 	}
 
 	// 检查iptables进程
@@ -221,17 +225,19 @@ func isNftablesActive() bool {
 	// 检查systemd服务状态文件
 	serviceStatePath := "/run/systemd/system/nftables.service"
 	logger.Debug("isNftablesActive: 检查服务状态文件 %s", serviceStatePath)
-	if _, err := os.Stat(serviceStatePath); err == nil {
+	_, err := os.Stat(serviceStatePath)
+	if err != nil {
+		logger.Debug("isNftablesActive: 服务状态文件不存在: %v", err)
+	} else {
 		logger.Debug("isNftablesActive: 服务状态文件存在")
-		if content, err := os.ReadFile(serviceStatePath); err == nil {
+		// #nosec G304 -- 采集系统信息需要动态路径
+		content, readErr := os.ReadFile(serviceStatePath)
+		if readErr == nil {
 			isActive := strings.Contains(string(content), "ActiveState=active")
 			logger.Debug("isNftablesActive: 服务状态文件包含 ActiveState=active: %t", isActive)
 			return isActive
-		} else {
-			logger.Debug("isNftablesActive: 无法读取服务状态文件: %v", err)
 		}
-	} else {
-		logger.Debug("isNftablesActive: 服务状态文件不存在: %v", err)
+		logger.Debug("isNftablesActive: 无法读取服务状态文件: %v", readErr)
 	}
 
 	// 检查nftables进程
@@ -258,6 +264,7 @@ func hasIptablesRules() bool {
 		if _, err := os.Stat(path); err == nil {
 			logger.Debug("hasIptablesRules: 规则文件存在: %s", path)
 			// 文件存在，检查内容
+			// #nosec G304 -- 采集系统信息需要动态路径
 			if content, err := os.ReadFile(path); err == nil {
 				contentStr := string(content)
 				// 检查是否有实际的规则（不只是注释和空行）
@@ -372,6 +379,7 @@ func GetPortsUseInfoWithStates(states []string) ([]PortUseInfo, error) {
 func getPortsFromProcNet(filePath, protocol string, allowedStates []string) ([]PortUseInfo, error) {
 	logger.Debug("getPortsFromProcNet: 开始读取文件 %s, 协议 %s, 允许状态 %v", filePath, protocol, allowedStates)
 
+	// #nosec G304 -- 采集系统信息需要动态路径
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		logger.Debug("getPortsFromProcNet: 无法读取文件 %s: %v", filePath, err)

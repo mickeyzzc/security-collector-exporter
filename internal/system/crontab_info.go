@@ -1,3 +1,4 @@
+// Package system 采集 Linux 系统安全相关信息，包括账户、SSH、防火墙、端口、服务等指标。
 package system
 
 import (
@@ -55,6 +56,7 @@ func GetAllCrontabInfo() []CrontabEntryInfo {
 }
 
 func parseCrontabFile(path string, isSystem bool) []CrontabEntryInfo {
+	// #nosec G304 -- 采集系统信息需要动态路径
 	data, err := os.ReadFile(path)
 	if err != nil {
 		logger.Debug("parseCrontabFile: 读取文件失败 %s: %v", path, err)
@@ -73,6 +75,7 @@ func parseCrontabFile(path string, isSystem bool) []CrontabEntryInfo {
 // parseUserCrontab 解析用户crontab文件
 // 用户crontab格式: 分 时 日 月 周 命令 (6个字段，无用户列)
 func parseUserCrontab(path string, user string) []CrontabEntryInfo {
+	// #nosec G304 -- 采集系统信息需要动态路径
 	data, err := os.ReadFile(path)
 	if err != nil {
 		logger.Debug("parseUserCrontab: 读取文件失败 %s: %v", path, err)
@@ -146,7 +149,7 @@ func isValidTimeField(field string) bool {
 	}
 	// 时间字段可以包含数字、*、,、-、/
 	for _, c := range field {
-		if !((c >= '0' && c <= '9') || c == '*' || c == ',' || c == '-' || c == '/') {
+		if (c < '0' || c > '9') && c != '*' && c != ',' && c != '-' && c != '/' {
 			return false
 		}
 	}
