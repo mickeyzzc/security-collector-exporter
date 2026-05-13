@@ -45,6 +45,21 @@ type SecurityCollector struct {
 	// 新增安全标准检查指标
 	hostsOptionsInfo *prometheus.Desc
 	systemTargetInfo *prometheus.Desc
+
+	// Sysctl/Crontab/Auditd/SELinux-AppArmor 指标
+	descSysctlParamSecure *prometheus.Desc
+	descCrontabEntry       *prometheus.Desc
+	descAuditdRunning     *prometheus.Desc
+	descAuditdRulesCount  *prometheus.Desc
+	descSELinuxMode       *prometheus.Desc
+	descAppArmorEnabled   *prometheus.Desc
+	descAppArmorProfiles  *prometheus.Desc
+
+	// 新采集数据
+	sysctlParams   []system.SysctlParamInfo
+	crontabEntries []system.CrontabEntryInfo
+	auditdInfo     system.AuditdInfo
+	selinuxDetail  system.SELinuxDetailInfo
 }
 
 // NewSecurityCollector 创建一个新的安全信息收集器
@@ -147,6 +162,47 @@ func NewSecurityCollector(cfg *config.Config) *SecurityCollector {
 			"系统目标信息",
 			[]string{"current_target", "target_type"}, nil,
 		),
+
+		descSysctlParamSecure: prometheus.NewDesc(
+			"linux_security_sysctl_param_secure",
+			"sysctl参数是否符合安全要求",
+			[]string{"param", "name"}, nil,
+		),
+		descCrontabEntry: prometheus.NewDesc(
+			"linux_security_crontab_entry",
+			"crontab定时任务条目",
+			[]string{"user", "source", "command"}, nil,
+		),
+		descAuditdRunning: prometheus.NewDesc(
+			"linux_security_auditd_running",
+			"auditd审计服务是否运行",
+			nil, nil,
+		),
+		descAuditdRulesCount: prometheus.NewDesc(
+			"linux_security_auditd_rules_count",
+			"auditd审计规则数量",
+			nil, nil,
+		),
+		descSELinuxMode: prometheus.NewDesc(
+			"linux_security_selinux_mode",
+			"SELinux运行模式",
+			[]string{"mode"}, nil,
+		),
+		descAppArmorEnabled: prometheus.NewDesc(
+			"linux_security_apparmor_enabled",
+			"AppArmor是否启用",
+			nil, nil,
+		),
+		descAppArmorProfiles: prometheus.NewDesc(
+			"linux_security_apparmor_profiles",
+			"AppArmor配置文件数量",
+			nil, nil,
+		),
+
+		sysctlParams:   system.GetSysctlSecurityParams(),
+		crontabEntries: system.GetAllCrontabInfo(),
+		auditdInfo:     system.GetAuditdInfo(),
+		selinuxDetail:  system.GetSELinuxDetailInfo(),
 	}
 }
 
@@ -170,6 +226,13 @@ func (c *SecurityCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.packageCount
 	ch <- c.hostsOptionsInfo
 	ch <- c.systemTargetInfo
+	ch <- c.descSysctlParamSecure
+	ch <- c.descCrontabEntry
+	ch <- c.descAuditdRunning
+	ch <- c.descAuditdRulesCount
+	ch <- c.descSELinuxMode
+	ch <- c.descAppArmorEnabled
+	ch <- c.descAppArmorProfiles
 }
 
 // Collect 实现Collector接口的Collect方法
@@ -452,4 +515,36 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			systemTargetInfo.TargetType,
 		)
 	}
+
+	// 收集Sysctl安全参数
+	for _, p := range c.sysctlParams {
+		ch <- prometheus.MustNewConstMetric(
+			c.descSysctlParamSecure,
+			prometheus.GaugeValue,
+			system.BoolToFloat64(p.IsSecure),
+			p.Name,
+			p.ExpectedValue,
+		)
+	}
+
+	// 收集Crontab条目
+	for _, e := range c.crontabEntries {
+		ch <- prometheus.MustNewConstMetric(
+			c.descCrontabEntry,
+			prometheus.GaugeValue,
+			1,
+			e.User,
+			e.Source,
+			e.Command,
+		)
+	}
+
+	// 收集Auditd信息
+	ch <- prometheus.MustNewConstMetric(c.descAuditdRunning, prometheus.GaugeValue, system.BoolToFloat64(c.auditdInfo.IsRunning))
+	ch <- prometheus.MustNewConstMetric(c.descAuditdRulesCount, prometheus.GaugeValue, float64(c.auditdInfo.RulesCount))
+
+	// 收集SELinux/AppArmor信息
+	ch <- prometheus.MustNewConstMetric(c.descSELinuxMode, prometheus.GaugeValue, 1, c.selinuxDetail.SELinuxMode)
+	ch <- prometheus.MustNewConstMetric(c.descAppArmorEnabled, prometheus.GaugeValue, system.BoolToFloat64(c.selinuxDetail.AppArmorEnabled))
+	ch <- prometheus.MustNewConstMetric(c.descAppArmorProfiles, prometheus.GaugeValue, float64(c.selinuxDetail.AppArmorProfiles))
 }
