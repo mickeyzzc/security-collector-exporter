@@ -27,6 +27,12 @@ dockers:
       - --platform=linux/amd64
     dockerfile: Dockerfile
     use: buildx
+    extra_files:
+      - go.mod
+      - go.sum
+      - cmd/
+      - internal/
+      - pkg/
   - image_templates:
       - "ghcr.io/mickeyzzc/security-collector-exporter:{{ .Version }}-arm64"
       - "ghcr.io/mickeyzzc/security-collector-exporter:latest-arm64"
@@ -38,6 +44,12 @@ dockers:
     dockerfile: Dockerfile
     goarch: arm64
     use: buildx
+    extra_files:
+      - go.mod
+      - go.sum
+      - cmd/
+      - internal/
+      - pkg/
 
 docker_manifests:
   - name_template: "ghcr.io/mickeyzzc/security-collector-exporter:{{ .Version }}"
