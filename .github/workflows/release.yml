@@ -24,6 +24,9 @@ jobs:
         with:
           go-version: '1.26'
 
+      - name: Set Go Version
+        run: echo "GO_VERSION=$(go version | awk '{print $3}')" >> $GITHUB_ENV
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -37,3 +40,4 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GO_VERSION: ${{ env.GO_VERSION }}

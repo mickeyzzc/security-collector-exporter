@@ -16,7 +16,6 @@ builds:
       - -X security-exporter/pkg/config.GoVersion={{.Env.GO_VERSION}}
     env:
       - CGO_ENABLED=0
-
 dockers:
   - image_templates:
       - "ghcr.io/mickeyzzc/security-collector-exporter:{{ .Version }}-amd64"
