@@ -1,5 +1,5 @@
 # 多阶段构建
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # 构建参数
 ARG VERSION=dev
