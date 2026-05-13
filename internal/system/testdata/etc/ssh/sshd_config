@@ -1,0 +1,10 @@
+# Sample sshd_config
+PermitRootLogin yes
+PasswordAuthentication yes
+PubkeyAuthentication yes
+Port 22
+AllowUsers admin
+
+# Commented out for testing
+#PermitEmptyPasswords no
+#Banner /etc/issue.net

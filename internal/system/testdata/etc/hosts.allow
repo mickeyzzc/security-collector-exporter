@@ -1,0 +1,2 @@
+sshd: 10.0.0.0/8 : allow
+ALL: ALL : DENY
