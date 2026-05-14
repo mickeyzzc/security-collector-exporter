@@ -52,7 +52,7 @@ docker_manifests:
 changelog:
   use: git
   sort: asc
-  format: '- {{ reReplaceAll "^(feat|fix|docs|test|ci|chore|refactor)(\\([[:word:]]+\\))?!?:\\s*" .Message "" }}'
+  abbrev: 8
   filters:
     exclude:
       - "^test:"
@@ -72,7 +72,6 @@ changelog:
       order: 1
     - title: "其他变更"
       order: 999
-
 release:
   github:
     owner: mickeyzzc
