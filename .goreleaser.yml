@@ -50,7 +50,9 @@ docker_manifests:
       - "ghcr.io/mickeyzzc/security-collector-exporter:latest-arm64"
 
 changelog:
+  use: git
   sort: asc
+  format: '- {{ reReplaceAll "^(feat|fix|docs|test|ci|chore|refactor)(\\([[:word:]]+\\))?!?:\\s*" .Message "" }}'
   filters:
     exclude:
       - "^test:"
@@ -62,10 +64,10 @@ changelog:
       - "Merge remote-tracking branch"
       - "Merge branch"
   groups:
-    - title: "\U0001F680 新功能"
+    - title: "🚀 新功能"
       regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
       order: 0
-    - title: "\U0001F41B 问题修复"
+    - title: "🐛 问题修复"
       regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
       order: 1
     - title: "其他变更"
