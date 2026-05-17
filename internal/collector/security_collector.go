@@ -238,7 +238,27 @@ func (c *SecurityCollector) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect 实现Collector接口的Collect方法
 func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
-	// 收集系统版本信息
+	c.collectOSInfo(ch)
+	c.collectAccountInfo(ch)
+	c.collectShadowInfo(ch)
+	c.collectSSHConfig(ch)
+	c.collectLoginDefs(ch)
+	c.collectSELinuxConfig(ch)
+	c.collectFirewallStatus(ch)
+	c.collectPortsInfo(ch)
+	c.collectServicesInfo(ch)
+	c.collectPatchTime(ch)
+	c.collectPackageCount(ch)
+	c.collectHostsOptions(ch)
+	c.collectSystemTarget(ch)
+	c.collectSysctlParams(ch)
+	c.collectCrontabEntries(ch)
+	c.collectAuditdInfo(ch)
+	c.collectSecurityModules(ch)
+}
+
+// collectOSInfo 收集系统版本信息
+func (c *SecurityCollector) collectOSInfo(ch chan<- prometheus.Metric) {
 	osVersionInfo, err := system.GetOSVersionInfo()
 	if err == nil {
 		ch <- prometheus.MustNewConstMetric(
@@ -263,8 +283,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			osVersionInfo.RedHatRelease,
 		)
 	}
+}
 
-	// 收集所有账户信息
+// collectAccountInfo 收集所有账户信息
+func (c *SecurityCollector) collectAccountInfo(ch chan<- prometheus.Metric) {
 	accounts, err := system.GetAllAccountInfo()
 	if err == nil {
 		for _, account := range accounts {
@@ -284,8 +306,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			)
 		}
 	}
+}
 
-	// 收集拆分的shadow指标
+// collectShadowInfo 收集拆分的shadow指标
+func (c *SecurityCollector) collectShadowInfo(ch chan<- prometheus.Metric) {
 	shadowMetrics, err := system.GetAllShadowMetrics()
 	if err == nil {
 		// 最后密码修改时间
@@ -348,8 +372,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			)
 		}
 	}
+}
 
-	// 收集SSH配置信息
+// collectSSHConfig 收集SSH配置信息
+func (c *SecurityCollector) collectSSHConfig(ch chan<- prometheus.Metric) {
 	sshConfigs, err := system.GetSSHConfigInfo()
 	if err == nil {
 		for _, config := range sshConfigs {
@@ -362,8 +388,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			)
 		}
 	}
+}
 
-	// 收集login.defs配置信息
+// collectLoginDefs 收集login.defs配置信息
+func (c *SecurityCollector) collectLoginDefs(ch chan<- prometheus.Metric) {
 	loginDefsConfigs, err := system.GetLoginDefsInfo()
 	if err == nil {
 		for _, config := range loginDefsConfigs {
@@ -384,8 +412,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			)
 		}
 	}
+}
 
-	// 收集SELinux配置信息
+// collectSELinuxConfig 收集SELinux配置信息
+func (c *SecurityCollector) collectSELinuxConfig(ch chan<- prometheus.Metric) {
 	selinuxConfigs, err := system.GetSELinuxConfigInfo()
 	if err == nil {
 		for _, config := range selinuxConfigs {
@@ -398,8 +428,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			)
 		}
 	}
+}
 
-	// 检查防火墙状态
+// collectFirewallStatus 检查防火墙状态
+func (c *SecurityCollector) collectFirewallStatus(ch chan<- prometheus.Metric) {
 	firewallInfo, err := system.CheckFirewallStatus()
 	if err == nil {
 		ch <- prometheus.MustNewConstMetric(
@@ -410,8 +442,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			fmt.Sprintf("%t", firewallInfo.IsRunning),
 		)
 	}
+}
 
-	// 获取端口使用信息
+// collectPortsInfo 获取端口使用信息
+func (c *SecurityCollector) collectPortsInfo(ch chan<- prometheus.Metric) {
 	portsInfo, err := system.GetPortsUseInfoWithStates(c.config.PortStates)
 	if err == nil {
 		for _, port := range portsInfo {
@@ -430,8 +464,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			)
 		}
 	}
+}
 
-	// 获取所有服务信息
+// collectServicesInfo 获取所有服务信息
+func (c *SecurityCollector) collectServicesInfo(ch chan<- prometheus.Metric) {
 	servicesInfo, err := system.GetAllServicesInfo()
 	if err == nil {
 		for _, service := range servicesInfo {
@@ -466,8 +502,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			}
 		}
 	}
+}
 
-	// 获取补丁时间信息
+// collectPatchTime 获取补丁时间信息
+func (c *SecurityCollector) collectPatchTime(ch chan<- prometheus.Metric) {
 	patchTimeInfo, err := system.GetPatchTimeInfo()
 	if err == nil {
 		ch <- prometheus.MustNewConstMetric(
@@ -477,8 +515,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			patchTimeInfo.PackageType,
 		)
 	}
+}
 
-	// 获取包数量信息
+// collectPackageCount 获取包数量信息
+func (c *SecurityCollector) collectPackageCount(ch chan<- prometheus.Metric) {
 	packageCountInfo, err := system.GetPackageCountInfo()
 	if err == nil {
 		ch <- prometheus.MustNewConstMetric(
@@ -488,8 +528,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			packageCountInfo.PackageType,
 		)
 	}
+}
 
-	// 获取hosts配置信息
+// collectHostsOptions 获取hosts配置信息
+func (c *SecurityCollector) collectHostsOptions(ch chan<- prometheus.Metric) {
 	hostsOptions, err := system.GetHostsOptionsInfo()
 	if err == nil {
 		for _, option := range hostsOptions {
@@ -504,8 +546,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			)
 		}
 	}
+}
 
-	// 获取系统目标信息
+// collectSystemTarget 获取系统目标信息
+func (c *SecurityCollector) collectSystemTarget(ch chan<- prometheus.Metric) {
 	systemTargetInfo, err := system.GetSystemTargetInfo()
 	if err == nil {
 		ch <- prometheus.MustNewConstMetric(
@@ -516,8 +560,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			systemTargetInfo.TargetType,
 		)
 	}
+}
 
-	// 收集Sysctl安全参数
+// collectSysctlParams 收集Sysctl安全参数
+func (c *SecurityCollector) collectSysctlParams(ch chan<- prometheus.Metric) {
 	for _, p := range c.sysctlParams {
 		ch <- prometheus.MustNewConstMetric(
 			c.descSysctlParamSecure,
@@ -527,8 +573,10 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			p.ExpectedValue,
 		)
 	}
+}
 
-	// 收集Crontab条目
+// collectCrontabEntries 收集Crontab条目
+func (c *SecurityCollector) collectCrontabEntries(ch chan<- prometheus.Metric) {
 	for _, e := range c.crontabEntries {
 		ch <- prometheus.MustNewConstMetric(
 			c.descCrontabEntry,
@@ -539,12 +587,16 @@ func (c *SecurityCollector) Collect(ch chan<- prometheus.Metric) {
 			e.Command,
 		)
 	}
+}
 
-	// 收集Auditd信息
+// collectAuditdInfo 收集Auditd信息
+func (c *SecurityCollector) collectAuditdInfo(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(c.descAuditdRunning, prometheus.GaugeValue, system.BoolToFloat64(c.auditdInfo.IsRunning))
 	ch <- prometheus.MustNewConstMetric(c.descAuditdRulesCount, prometheus.GaugeValue, float64(c.auditdInfo.RulesCount))
+}
 
-	// 收集SELinux/AppArmor信息
+// collectSecurityModules 收集SELinux/AppArmor信息
+func (c *SecurityCollector) collectSecurityModules(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(c.descSELinuxMode, prometheus.GaugeValue, 1, c.selinuxDetail.SELinuxMode)
 	ch <- prometheus.MustNewConstMetric(c.descAppArmorEnabled, prometheus.GaugeValue, system.BoolToFloat64(c.selinuxDetail.AppArmorEnabled))
 	ch <- prometheus.MustNewConstMetric(c.descAppArmorProfiles, prometheus.GaugeValue, float64(c.selinuxDetail.AppArmorProfiles))
