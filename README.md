@@ -65,6 +65,15 @@ docker-compose down
 | `--log.level` | `info` | 日志级别：debug, info, warn, error |
 | `--log.format` | `logfmt` | 日志格式：logfmt, json |
 
+#### eBPF 安全事件监控配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--ebpf.enabled` | `false` | 是否启用 eBPF 安全事件监控（需要 Linux 5.4+，需要特权） |
+| `--ebpf.sample-rate` | `1` | eBPF 事件采样率（1=每个事件，10=每10个事件取1个） |
+| `--ebpf.detailed` | `false` | 是否启用详细模式（Ring Buffer + Top-N 跟踪，资源消耗更高） |
+| `--ebpf.max-events-per-second` | `5000` | 每秒最大事件数，超过后自适应降采样 |
+
 #### 使用示例
 
 ```bash
@@ -91,6 +100,15 @@ docker-compose down
 
 # 只采集既启用又运行的服务
 ./security-exporter --collector.services-enabled=true --collector.services-running=true
+
+# 启用 eBPF 安全事件监控（需 Linux 5.4+ 及特权模式）
+./security-exporter --ebpf.enabled=true
+
+# 启用 eBPF + 详细模式（Ring Buffer + Top-N，资源消耗更高）
+./security-exporter --ebpf.enabled=true --ebpf.detailed=true
+
+# 启用 eBPF + 自定义采样率
+./security-exporter --ebpf.enabled=true --ebpf.sample-rate=10 --ebpf.max-events-per-second=10000
 ```
 
 ## 项目结构
@@ -100,8 +118,19 @@ Security-Collector/
 ├── cmd/security-exporter/     # 主程序入口
 │   └── main.go
 ├── internal/                  # 内部包
+│   ├── bpf/                 # eBPF BPF C 程序 + Go 绑定
+│   │   ├── sources/         # BPF C 源文件
+│   │   ├── bpf2go.go        # go:generate 指令
+│   │   └── types.go         # BPF 常量 Go 绑定
 │   ├── collector/            # Prometheus收集器
-│   │   └── security_collector.go
+│   │   ├── security_collector.go
+│   │   └── ebpf_collector.go # eBPF Prometheus 收集器
+│   ├── ebpf/                 # eBPF Go 集成层
+│   │   ├── manager.go       # 生命周期管理
+│   │   ├── aggregator.go    # BPF Map 聚合读取器
+│   │   ├── spacesaving.go   # Space-Saving Top-N
+│   │   ├── sampler.go       # 自适应采样
+│   │   └── fallback.go      # 优雅降级
 │   └── system/               # 系统检查功能
 │       ├── account_info.go   # 账户信息检查
 │       ├── config_info.go    # 配置文件检查
@@ -202,7 +231,23 @@ linux_security_ports_use_info{process="sshd", port="22"}
 
 # 检查密码策略
 linux_security_login_defs_info{info_key="PASS_MIN_LEN", info_value="num"} >= 10
+
+### eBPF 安全事件查询
+
+```promql
+# eBPF 事件总数（按事件类型）
+security_ebpf_events_total{event_type="exec"}
+
+# eBPF 事件速率（1分钟增长率）
+rate(security_ebpf_events_total[1m])
+
+# Top-N 频繁系统调用
+security_ebpf_top_n{tier="1"}
+
+# eBPF 性能指标（丢弃事件数）
+security_ebpf_dropped_events_total
 ```
+
 
 更多详细的配置说明、查询示例和告警规则，请参考：
 - [快速开始指南](doc/QUICK_START.md) - 详细的配置和运行说明
