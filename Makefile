@@ -1,6 +1,6 @@
 # Security Collector Makefile
 
-.PHONY: build test clean run lint fmt docker-build docker-run docker-push
+.PHONY: build test clean run lint fmt docker-build docker-run docker-push bpf-generate bpf-build
 
 # 构建变量
 BINARY_NAME=security-exporter
@@ -82,6 +82,24 @@ docker-clean:
 	@echo "Cleaning Docker images..."
 	@docker rmi $(DOCKER_IMAGE):$(DOCKER_TAG) || true
 
+# BPF Go 绑定生成（需要 Linux 环境或 Docker，需先在 internal/bpf/ 下创建 BPF C 源码和 bpf2go.go）
+# 使用方式: make bpf-generate
+GO_VERSION := $(shell go version | grep -oP 'go\K[0-9.]+' | head -1)
+ifneq ($(GO_VERSION),)
+DOCKER_GOLANG_IMAGE = golang:$(GO_VERSION)
+else
+DOCKER_GOLANG_IMAGE = golang:1.26
+endif
+
+.PHONY: bpf-generate
+bpf-generate: ## Generate Go bindings from BPF C programs (requires Docker or Linux with clang)
+	docker run --rm -v $(CURDIR):/src -w /src $(DOCKER_GOLANG_IMAGE) \
+		sh -c "apt-get update && apt-get install -y clang llvm linux-headers-generic && go generate ./internal/bpf/..."
+
+.PHONY: bpf-build
+bpf-build: ## Full build including BPF code generation and binary build
+bpf-build: bpf-generate build
+
 # 帮助信息
 help:
 	@echo "Available targets:"
@@ -98,4 +116,6 @@ help:
 	@echo "  docker-stop   - Stop Docker container"
 	@echo "  docker-push   - Push Docker image"
 	@echo "  docker-clean  - Clean Docker images"
+	@echo "  bpf-generate - Generate BPF Go bindings (requires Docker or Linux with clang)"
+	@echo "  bpf-build     - Full build including BPF generation and binary build"
 	@echo "  help          - Show this help"

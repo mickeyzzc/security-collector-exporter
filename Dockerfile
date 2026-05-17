@@ -9,7 +9,7 @@ ARG GIT_COMMIT=unknown
 WORKDIR /app
 
 # 安装必要的包
-RUN apk add --no-cache git ca-certificates tzdata
+RUN apk add --no-cache git ca-certificates tzdata clang llvm linux-headers libbpf-dev
 
 # 复制 go mod 文件
 COPY go.mod go.sum ./
@@ -19,6 +19,11 @@ RUN go mod download
 
 # 复制源代码
 COPY . .
+
+
+# Generate BPF Go bindings (requires BPF C source files in internal/bpf/)
+# 启用条件: internal/bpf/ 下创建 bpf2go.go 和 BPF C 源码后取消注释
+# RUN go generate ./internal/bpf/...
 
 # 构建应用
 RUN CGO_ENABLED=0 GOOS=linux go build \
