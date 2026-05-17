@@ -3,6 +3,7 @@ package ebpf
 
 import (
 	"context"
+	"fmt"
 
 	_ "github.com/cilium/ebpf" // 确保 go mod tidy 保留依赖
 
@@ -29,13 +30,23 @@ func (m *Manager) Start(ctx context.Context) error {
 		return nil
 	}
 
-	// TODO: 后续任务实现 BPF 程序加载
-	// 1. CheckBPFAvailability()
-	// 2. loadBpfPrograms()
-	// 3. attachTracepoints()
-	// 4. startAggregationGoroutine(ctx)
+	// 检查 BPF 可用性
+	avail := CheckBPFAvailability()
+	if !avail.Available {
+		logger.Warn("eBPF monitoring degraded, reasons:")
+		for _, r := range avail.Reasons {
+			logger.Warn(fmt.Sprintf("  - %s", r))
+		}
+		logger.Warn("Continuing with traditional collectors only")
+		return nil
+	}
 
-	logger.Info("eBPF manager started (placeholder - BPF programs not yet loaded)")
+	logger.Info("eBPF environment check passed")
+	// TODO: 后续任务实现 BPF 程序加载
+	// 1. loadBpfPrograms()
+	// 2. attachTracepoints()
+	// 3. startAggregationGoroutine(ctx)
+
 	m.running = true
 	return nil
 }
