@@ -21,6 +21,10 @@ type Config struct {
 	EnableGoMetrics        bool // 是否采集Go自身性能指标
 	CollectServicesEnabled bool // 是否采集启用的服务（默认true）
 	CollectServicesRunning bool // 是否采集运行中的服务（默认false）
+	EbpfEnabled            bool // 是否启用 eBPF 安全事件监控（需 Linux 5.4+，需特权和内核支持）
+	EbpfDetailed           bool // 是否启用详细模式（Ring Buffer + Top-N 跟踪，资源消耗更高）
+	EbpfSampleRate         int  // eBPF 事件采样率（1=每个事件；10=每第10个事件）
+	EbpfMaxEventsPerSec    int  // 每秒最大事件数，超过后自适应降采样
 }
 
 // VersionInfo 版本信息结构
@@ -57,6 +61,10 @@ func LoadConfig() *Config {
 		collectServicesEnabled = flag.Bool("collector.services-enabled", true, "Collect services that are enabled. Default: true (only collect enabled services).")
 		collectServicesRunning = flag.Bool("collector.services-running", false, "Collect services that are running. Default: false (exclude running services).")
 		showVersion            = flag.Bool("version", false, "Show version information and exit.")
+		ebpfEnabled            = flag.Bool("ebpf.enabled", false, "Enable eBPF-based security event monitoring (requires Linux 5.4+, requires elevated capabilities).")
+		ebpfSampleRate         = flag.Int("ebpf.sample-rate", 1, "eBPF event sampling rate (1=every event, 10=every 10th event).")
+		ebpfDetailed           = flag.Bool("ebpf.detailed", false, "Enable detailed eBPF mode with Ring Buffer + Top-N tracking (higher resource usage).")
+		ebpfMaxEventsPerSec    = flag.Int("ebpf.max-events-per-second", 5000, "Maximum events per second before adaptive sampling increases.")
 	)
 
 	flag.Parse()
@@ -98,6 +106,10 @@ func LoadConfig() *Config {
 		CollectServicesEnabled: *collectServicesEnabled,
 		CollectServicesRunning: *collectServicesRunning,
 		ShowVersion:            *showVersion,
+		EbpfEnabled:            *ebpfEnabled,
+		EbpfDetailed:           *ebpfDetailed,
+		EbpfSampleRate:         *ebpfSampleRate,
+		EbpfMaxEventsPerSec:    *ebpfMaxEventsPerSec,
 	}
 }
 

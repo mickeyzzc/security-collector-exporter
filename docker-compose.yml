@@ -38,6 +38,12 @@ services:
       - /run:/run:ro
     environment:
       - TZ=Asia/Shanghai
+    # eBPF 安全事件监控模式（可选，默认关闭）:
+    # 启用方式: 添加 --ebpf.enabled=true 到下方 command 中
+    # 前置条件: Linux 5.4+ 内核，支持 BTF（BPF Type Format）
+    # 注意事项: - eBPF 模式需要 BCC/libbpf 库支持
+    #             - 当前已启用 privileged: true，已满足 eBPF 运行权限需求
+    #             - 详细资源限制见 --ebpf.max-events-per-second 参数
     command: [
       "--web.listen-address=:9102",
       "--web.telemetry-path=/metrics",

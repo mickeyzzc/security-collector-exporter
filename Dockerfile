@@ -9,7 +9,7 @@ ARG GIT_COMMIT=unknown
 WORKDIR /app
 
 # 安装必要的包
-RUN apk add --no-cache git ca-certificates tzdata
+RUN apk add --no-cache git ca-certificates tzdata clang llvm linux-headers libbpf-dev
 
 # 复制 go mod 文件
 COPY go.mod go.sum ./
@@ -20,6 +20,11 @@ RUN go mod download
 # 复制源代码
 COPY . .
 
+
+# Generate BPF Go bindings (requires clang, llvm, linux-headers)
+# 如果 BPF 源码不存在或 generate 失败，跳过而不中断构建
+RUN if [ -d "internal/bpf/sources" ]; then go generate ./internal/bpf/... || true; fi
+
 # 构建应用
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags "-X security-exporter/pkg/config.Version=${VERSION:-dev} \
@@ -28,8 +33,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
               -X security-exporter/pkg/config.GoVersion=$(go version)" \
     -a -installsuffix cgo -o security-exporter ./cmd/security-exporter
 
-# 运行阶段
+# ── 运行阶段 ──
 FROM alpine:latest
+
+# eBPF 运行时权限说明:
+#   eBPF 监控功能需要 Linux 5.4+ 内核，并使用以下任一方式运行:
+#   docker run --privileged ...
+#   docker run --cap-add CAP_BPF --cap-add CAP_PERFMON --cap-add CAP_NET_ADMIN ...
+LABEL "security-exporter.ebpf"="eBPF monitoring requires --privileged or --cap-add CAP_BPF,CAP_PERFMON,CAP_NET_ADMIN and Linux 5.4+"
 
 # 安装必要的包
 RUN apk --no-cache add ca-certificates tzdata

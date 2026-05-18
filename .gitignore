@@ -48,3 +48,6 @@ build/
 .spec-workflow
 .sisyphus
 AGENTS.md
+
+# bpf2go generated files (intermediate)
+internal/bpf/bpf2go_*.o
