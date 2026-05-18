@@ -277,6 +277,7 @@ linux_security_ports_use_info{process="sshd", port="22"}
 # 检查密码策略
 linux_security_login_defs_info{info_key="PASS_MIN_LEN", info_value="num"} >= 10
 
+```
 ### eBPF 安全事件查询
 
 ```promql
