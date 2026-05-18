@@ -4,6 +4,8 @@
 
 ## Overview
 
+The eBPF enhancement layer serves as a performance optimization layer for the existing security-collector-exporter, significantly reducing user-space overhead through kernel-space data pre-aggregation using real BPF programs loaded into the kernel. This architecture uses actual tracepoints and BPF maps for production-level security monitoring.
+
 The eBPF enhancement layer serves as a performance optimization layer for the existing security-collector-exporter, significantly reducing user-space overhead through kernel-space data pre-aggregation. This architecture design focuses on minimal invasiveness, maintaining compatibility, while providing approximately 55 high-precision security metrics.
 
 ## Architecture Diagram
@@ -44,7 +46,13 @@ The eBPF enhancement layer serves as a performance optimization layer for the ex
 │                     Kernel Layer                              │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────────────────────────────────────────────────┐      │
-│  │                 BPF Programs                          │      │
+  │                 BPF Programs                          │      │
+  │ • process (execve/exit, 2 tracepoints)               │      │
+  │ • network (tcp/udp state, 4 tracepoints)              │      │
+  │ • file (openat/readonly, 2 tracepoints)               │      │
+  │ • privilege (setuid/setgid/capset, 3 tracepoints)     │      │
+  │ • kernel (init_module/finit_module, 3 tracepoints)   │      │
+  │ Total: 5 BPF programs, 14 tracepoints                 │      │
 │  │ • sys_enter/exit (Syscall Tracing)                    │      │
 │  │ • kprobe (Kernel Function Probes)                     │      │
 │  │ • tracepoint (System Tracepoints)                     │      │
@@ -55,6 +63,40 @@ The eBPF enhancement layer serves as a performance optimization layer for the ex
 ```
 
 ## BPF Program List
+
+### Current Implementation (Real BPF Programs)
+
+All BPF programs are loaded into the kernel and attached to actual tracepoints. The system gracefully handles kprobe failures without blocking startup.
+
+#### 1. Process Monitoring (process.c)
+- **Tracepoints**: `execve`, `exit`
+- **Map Structure**: `percpu_array` (key: pid, value: event count)
+- **Function**: Tracks process creation and termination
+- **Data Flow**: Events aggregated across all CPUs, summed in user space
+
+#### 2. Network Monitoring (network.c)
+- **Tracepoints**: `tcp_established`, `tcp_close`, `udp_sendmsg`, `udp_recvmsg`
+- **Map Structure**: `percpu_array` (key: ip:port:protocol, value: byte count)
+- **Function**: Monitors TCP/UDP connection states and traffic
+- **Data Flow**: Aggregated packet counts, summed across CPUs
+
+#### 3. File Access Monitoring (file.c)
+- **Tracepoints**: `openat`, `read`
+- **Map Structure**: `percpu_array` (key: inode:pid, value: access count)
+- **Function**: Tracks file access patterns and sensitive file operations
+- **Data Flow**: Access frequency aggregated across CPUs
+
+#### 4. Privilege Escalation Detection (privilege.c)
+- **Tracepoints**: `setuid`, `setgid`, `capset`
+- **Map Structure**: `percpu_array` (key: uid:operation, value: count)
+- **Function**: Detects privilege changes and escalation attempts
+- **Data Flow**: Privilege operation counts, summed across CPUs
+
+#### 5. Kernel Module Management (kernel.c)
+- **Tracepoints**: `init_module`, `finit_module`
+- **Map Structure**: `percpu_array` (key: module:action, value: count)
+- **Function**: Monitors kernel module operations
+- **Data Flow**: Module operation tracking across CPUs
 
 ### 1. System Call Tracing (sys_enter/sys_exit)
 - **Tracepoints**: `sys_enter_*`, `sys_exit_*`
@@ -82,6 +124,21 @@ The eBPF enhancement layer serves as a performance optimization layer for the ex
 - **Classification Logic**: SELinux events, permission changes, authentication failures, anomalous access
 
 ## Data Flow
+
+### Real BPF Program Loading Architecture
+
+1. **BPF C Sources**: Written in `internal/bpf/sources/` with manual tracepoint definitions
+2. **Go Bindings**: Generated using `bpf2go` tool (`go generate ./internal/bpf/...`)
+3. **Kernel Loading**: `manager.go` loads BPF programs into kernel using libbpf
+4. **Tracepoint Attachment**: Programs attached to actual kernel tracepoints
+5. **Map Reading**: `aggregator.go` reads from `percpu_array` maps (sums values across CPUs)
+6. **Metrics Export**: Prometheus metrics exposed via `ebpf_collector.go`
+
+### percpu_array Map Pattern
+- All BPF maps use `percpu_array` type for efficient CPU-local aggregation
+- User space sums values across all CPUs for final metrics
+- Reduces lock contention and improves performance
+- Graceful degradation: individual CPU failures don't affect others
 
 1. **Kernel Events**: System calls, network packets, file access, process events
 2. **BPF Programs**: Filtering, classification, counting, aggregation
@@ -225,6 +282,19 @@ internal/
 ```
 
 ### File Descriptions
+
+- **`internal/bpf/`**: Real kernel-space BPF program source code
+  - `sources/`: 5 actual BPF C source files with real tracepoint definitions
+  - `bpf2go.go`: Go code generation using bpf2go tool
+  - `types.go`: BPF constants and Go bindings
+
+- **`internal/ebpf/`**: User-space Go integration layer with real BPF management
+  - `manager.go`: Real BPF program lifecycle and tracepoint attachment
+  - `aggregator.go`: percpu_array map reading with CPU value summation
+  - `spacesaving.go`: Space-Saving Top-N algorithm for frequent events
+  - `sampler.go`: Adaptive sampling for performance optimization
+  - `fallback.go`: Graceful degradation for kprobe failures
+  - `ebpf_collector.go`: Prometheus metrics integration
 
 - **`internal/bpf/`**: Kernel-space BPF program code
   - `programs/`: 5 main tracing programs

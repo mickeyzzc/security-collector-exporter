@@ -2,6 +2,8 @@
 
 # eBPF Deployment Guide
 
+This guide covers deploying security-collector-exporter with real BPF programs (not simulation mode). The eBPF layer uses actual kernel tracepoints and BPF maps for production security monitoring.
+
 ## Kernel Version Requirements
 
 ### Minimum Requirements (5.4+)
@@ -44,7 +46,65 @@ setcap cap_bpf,cap_perfmon,cap_net_admin+ep ./bin/security-exporter
 - `CAP_PERFMON`: Allows using performance monitoring tools
 - `CAP_NET_ADMIN`: Allows network-related eBPF operations
 
-## Docker Deployment
+## Build Requirements
+
+### Development Environment
+- **Go 1.26+**: Required for building the Go application
+- **clang + llvm**: Required for BPF C compilation and `go generate` commands
+- **Linux headers**: For kernel-specific BPF features
+
+### BPF Code Generation
+
+The BPF programs require code generation using `bpf2go` tool:
+
+```bash
+# Using Docker (recommended for consistency)
+make bpf-generate
+
+# Local build without Docker
+# 1. Install clang + llvm
+sudo apt-get install clang llvm  # Ubuntu/Debian
+sudo yum install clang llvm      # RHEL/CentOS
+
+# 2. Generate BPF Go bindings
+go generate ./internal/bpf/...
+
+# 3. Build the main application
+make build
+```
+
+### Cross-compilation
+- BPF bytecode is architecture-independent
+- Generate BPF bindings on any platform with clang/llvm
+- Cross-compile Go binary for target architecture
+- Example: `GOOS=linux GOARCH=amd64 make build-linux`
+
+## Runtime Requirements
+
+### Kernel Version Requirements
+- **Minimum**: Linux 5.4+ (basic BPF support)
+- **Recommended**: Linux 5.8+ (ring buffer support)
+- **Best**: Linux 5.15+ (complete eBPF feature set)
+
+### BTF Support
+- Modern kernels include BTF (BPF Type Format) automatically
+- Required for detailed BPF program debugging
+- Install kernel headers if missing:
+```bash
+sudo apt install linux-headers-$(uname -r)  # Ubuntu
+sudo yum install kernel-devel               # RHEL
+```
+
+### Permissions
+Real BPF programs require kernel privileges:
+```bash
+# Option 1: Root privileges (recommended)
+sudo ./security-exporter --ebpf.enabled=true
+
+# Option 2: Specific capabilities
+sudo setcap cap_bpf,cap_perfmon,cap_net_admin+ep ./security-exporter
+./security-exporter --ebpf.enabled=true
+```
 
 ### Basic Docker Configuration
 ```yaml

@@ -40,7 +40,7 @@ func main() {
 	prometheus.MustRegister(securityCollector)
 
 	// 初始化 eBPF Manager
-	ebpfManager := ebpf.NewManager(cfg.EbpfEnabled)
+	ebpfManager := ebpf.NewManager(cfg)
 	if err := ebpfManager.Start(ctx); err != nil {
 		log.Printf("Failed to start eBPF manager: %v", err)
 		stop()

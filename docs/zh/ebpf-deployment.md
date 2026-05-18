@@ -1,5 +1,7 @@
 # eBPF 部署指南
 
+本指南介绍部署 security-collector-exporter 与真实 BPF 程序（非模拟模式）。eBPF 层使用实际的内核追踪点和 BPF 映射进行生产级安全监控。
+
 ## 内核版本要求
 
 ### 基本要求 (5.4+)
@@ -17,7 +19,40 @@
 - 完整的 eBPF 功能支持
 - 更好的错误处理和调试功能
 - 更稳定的内核 API
+## 构建要求
 
+### 开发环境
+- **Go 1.26+**: 构建 Go 应用程序的必需依赖
+- **clang + llvm**: BPF C 编译和 `go generate` 命令的必需依赖
+- **Linux 头文件**: 内核特定的 BPF 功能
+
+### BPF 代码生成
+
+BPF 程序需要使用 `bpf2go` 工具进行代码生成：
+
+```bash
+# 使用 Docker（推荐，确保一致性）
+make bpf-generate
+
+# 本地构建（不使用 Docker）
+# 1. 安装 clang + llvm
+sudo apt-get install clang llvm  # Ubuntu/Debian
+sudo yum install clang llvm      # RHEL/CentOS
+
+# 2. 生成 BPF Go 绑定
+go generate ./internal/bpf/...
+
+# 3. 构建主程序
+make build
+```
+
+### 交叉编译
+- BPF 字节码是与架构无关的
+- 在任何有 clang/llvm 的平台上生成 BPF 绑定
+- 交叉编译 Go 二进制文件到目标架构
+- 示例: `GOOS=linux GOARCH=amd64 make build-linux`
+
+## 权限要求
 ## 权限要求
 
 ### 必需权限

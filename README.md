@@ -1,7 +1,7 @@
 [中文](README.zh.md) | English
 
 # Security Collector Exporter
-
+Linux Security Information Collector Prometheus Exporter, used for monitoring server security status. Collects security metrics including accounts, SSH, firewall, ports, services, patches, processes, and supports real eBPF security event monitoring using 5 actual BPF programs with 14 kernel tracepoints.
 Linux Security Information Collector Prometheus Exporter, used for monitoring server security status. Collects security metrics including accounts, SSH, firewall, ports, services, patches, processes, and supports eBPF real-time security event monitoring.
 
 ## Quick Start
@@ -12,6 +12,17 @@ Linux Security Information Collector Prometheus Exporter, used for monitoring se
 
 ```bash
 # Build
+
+```bash
+# 1. Generate BPF Go bindings (requires clang/llvm)
+go generate ./internal/bpf/...
+
+# 2. Build the application
+go build -o security-exporter ./cmd/security-exporter
+
+# 3. Run
+./security-exporter --web.listen-address=:9102 --web.telemetry-path=/metrics
+```
 go build -o security-exporter ./cmd/security-exporter
 
 # Run
@@ -218,6 +229,10 @@ The collector provides the following security-related metrics:
   - Supported package manager types: rpm (RedHat/CentOS), dpkg (Debian/Ubuntu), pacman (Arch Linux)
 
 ### eBPF Security Event Monitoring (requires --ebpf.enabled=true)
+
+Uses real BPF programs loaded into the kernel with actual tracepoint monitoring (5 programs, 14 tracepoints).
+
+#### Metadata
 
 #### Metadata
 - `security_ebpf_up`: eBPF monitoring status (status label: active/degraded/disabled)

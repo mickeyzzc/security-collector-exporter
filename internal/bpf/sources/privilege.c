@@ -2,8 +2,27 @@
 // 追踪 setuid、setgid、capset 系统调用，统计提权尝试次数及成功/失败分布
 // 使用 percpu_array map 按类型和结果分类计数
 
-#include <linux/ptrace.h>
-#include <linux/sched.h>
+#include <linux/bpf.h>
+#include <bpf/bpf_helpers.h>
+
+/* tracepoint 上下文结构体（手动定义，不依赖内核头文件） */
+struct trace_event_raw_sys_enter {
+    __u16 common_type;
+    __u8  common_flags;
+    __u8  common_preempt_count;
+    __s32 common_pid;
+    int   __syscall_nr;
+    __u64 args[6];
+};
+
+struct trace_event_raw_sys_exit {
+    __u16 common_type;
+    __u8  common_flags;
+    __u8  common_preempt_count;
+    __s32 common_pid;
+    int   __syscall_nr;
+    __s64 ret;
+};
 
 // 提权调用类型
 #define TYPE_SETUID  0

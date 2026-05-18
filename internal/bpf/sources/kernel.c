@@ -5,7 +5,7 @@
 // 编译目标: cilium/ebpf bpf2go 兼容
 // 内核要求: Linux 5.4+ (BTF 支持)
 
-#include <linux/types.h>
+#include <linux/bpf.h>
 #include <bpf/bpf_helpers.h>
 
 /* ============================================================
@@ -30,6 +30,16 @@ struct {
     __type(key, __u32);
     __type(value, __u64);
 } module_load_total SEC(".maps");
+
+/* tracepoint 上下文结构体（手动定义，不依赖内核头文件） */
+struct trace_event_raw_sys_enter {
+    __u16 common_type;
+    __u8  common_flags;
+    __u8  common_preempt_count;
+    __s32 common_pid;
+    int   __syscall_nr;
+    __u64 args[6];
+};
 
 /* ============================================================
  * 辅助函数
