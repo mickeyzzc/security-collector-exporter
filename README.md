@@ -167,7 +167,10 @@ security-collector-exporter/
 ├── pkg/
 │   ├── config/              # CLI flags + 版本注入
 │   └── logger/              # 日志封装
-├── doc/                      # 文档
+├── docs/
+│   ├── zh/              # 中文文档
+│   ├── en/              # English documentation
+│   └── README.md        # 文档导航
 ├── Makefile
 ├── Dockerfile
 └── docker-compose.yml
@@ -240,12 +243,12 @@ security-collector-exporter/
 
 ## 文档
 
-- [快速开始指南](doc/QUICK_START.md) - 构建、运行和基本配置指南
-- [安全标准检查清单](doc/SECURITY_CHECKLIST.md) - 详细的安全检查项目和PromQL查询示例
-- [Prometheus查询示例](doc/SECURITY_CHECKLIST.md#prometheus查询示例) - 各种安全指标的查询方法
-- [告警规则示例](doc/SECURITY_CHECKLIST.md#告警规则示例) - 基于安全指标的告警配置
-- [eBPF 架构设计](doc/ebpf-architecture.md) - eBPF 集成架构设计文档
-- [eBPF 部署指南](doc/ebpf-deployment.md) - 内核要求、部署和故障排查
+- [快速开始指南](docs/zh/QUICK_START.md) - 构建、运行和基本配置指南
+- [安全标准检查清单](docs/zh/SECURITY_CHECKLIST.md) - 详细的安全检查项目和PromQL查询示例
+- [Prometheus查询示例](docs/zh/SECURITY_CHECKLIST.md#prometheus查询示例) - 各种安全指标的查询方法
+- [告警规则示例](docs/zh/SECURITY_CHECKLIST.md#告警规则示例) - 基于安全指标的告警配置
+- [eBPF 架构设计](docs/zh/ebpf-architecture.md) - eBPF 集成架构设计文档
+- [eBPF 部署指南](docs/zh/ebpf-deployment.md) - 内核要求、部署和故障排查
 
 ## 安全标准合规性
 
@@ -311,5 +314,5 @@ security_ebpf_sample_rate
 
 
 更多详细的配置说明、查询示例和告警规则，请参考：
-- [快速开始指南](doc/QUICK_START.md) - 详细的配置和运行说明
-- [安全标准检查清单](doc/SECURITY_CHECKLIST.md) - 完整的查询示例和告警规则
+- [快速开始指南](docs/zh/QUICK_START.md) - 详细的配置和运行说明
+- [安全标准检查清单](docs/zh/SECURITY_CHECKLIST.md) - 完整的查询示例和告警规则
