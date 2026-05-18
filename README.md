@@ -1,6 +1,6 @@
-# Security Collector
+# Security Collector Exporter
 
-Linux安全信息收集器，用于Prometheus监控系统安全状态。
+Linux 安全信息收集 Prometheus Exporter，用于监控服务器安全状态。采集账户、SSH、防火墙、端口、服务、补丁、进程等安全指标，支持 eBPF 实时安全事件监控。
 
 ## 快速开始
 
@@ -22,16 +22,44 @@ go build -o security-exporter ./cmd/security-exporter
 # 构建 Docker 镜像
 make docker-build
 
-# 运行 Docker 容器
+# 运行 Docker 容器（需要特权模式以读取系统文件）
 make docker-run
 
 # 或使用 docker-compose
 docker-compose up -d
+```
 
-# 停止容器
-make docker-stop
-# 或
-docker-compose down
+#### Systemd 部署（生产推荐）
+
+```bash
+# 1. 部署二进制
+sudo cp security-exporter /usr/local/bin/
+
+# 2. 创建 systemd 服务
+sudo cat > /etc/systemd/system/security-exporter.service << 'EOF'
+[Unit]
+Description=Security Collector Exporter
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/security-exporter --web.listen-address=:9102
+Restart=on-failure
+RestartSec=5
+
+# 需要读取 /etc/shadow, /proc 等系统文件
+AmbientCapabilities=CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 3. 启动服务
+sudo systemctl daemon-reload
+sudo systemctl enable --now security-exporter
+
+# 验证
+curl -s localhost:9102/metrics | head
 ```
 
 ### 配置参数
@@ -114,46 +142,35 @@ docker-compose down
 ## 项目结构
 
 ```
-Security-Collector/
-├── cmd/security-exporter/     # 主程序入口
-│   └── main.go
-├── internal/                  # 内部包
+security-collector-exporter/
+├── cmd/security-exporter/     # 入口，HTTP server + Prometheus 注册
+├── internal/
 │   ├── bpf/                 # eBPF BPF C 程序 + Go 绑定
 │   │   ├── sources/         # BPF C 源文件
 │   │   ├── bpf2go.go        # go:generate 指令
 │   │   └── types.go         # BPF 常量 Go 绑定
-│   ├── collector/            # Prometheus收集器
-│   │   ├── security_collector.go
-│   │   └── ebpf_collector.go # eBPF Prometheus 收集器
+│   ├── collector/            # Prometheus collector
+│   │   ├── security_collector.go  # 传统安全指标采集
+│   │   └── ebpf_collector.go     # eBPF 指标采集
 │   ├── ebpf/                 # eBPF Go 集成层
 │   │   ├── manager.go       # 生命周期管理
 │   │   ├── aggregator.go    # BPF Map 聚合读取器
 │   │   ├── spacesaving.go   # Space-Saving Top-N
 │   │   ├── sampler.go       # 自适应采样
 │   │   └── fallback.go      # 优雅降级
-│   └── system/               # 系统检查功能
-│       ├── account_info.go   # 账户信息检查
-│       ├── config_info.go    # 配置文件检查
-│       ├── network_info.go   # 网络信息检查
-│       ├── os_info.go        # 操作系统信息
-│       ├── service_info.go   # 服务信息检查
-│       ├── system_info.go    # 系统信息检查
-│       └── utils.go          # 工具函数
-├── pkg/                      # 公共包
-│   ├── config/              # 配置管理
-│   │   └── config.go
-│   └── logger/              # 日志管理
-│       └── logger.go
-├── doc/                      # 文档目录
-│   ├── QUICK_START.md       # 快速开始指南
-│   └── SECURITY_CHECKLIST.md # 安全标准检查清单
-├── go.mod
-├── go.sum
+│   └── system/               # 核心采集逻辑（12 文件）
+│       ├── account_info.go   # 账户/shadow
+│       ├── network_info.go   # 端口/防火墙
+│       ├── process_info.go   # 进程版本探测
+│       ├── config_info.go    # SSH/SELinux 配置
+│       └── ...
+├── pkg/
+│   ├── config/              # CLI flags + 版本注入
+│   └── logger/              # 日志封装
+├── doc/                      # 文档
 ├── Makefile
 ├── Dockerfile
-├── docker-compose.yml
-├── .dockerignore
-└── README.md
+└── docker-compose.yml
 ```
 
 ## 监控指标
@@ -195,12 +212,40 @@ Security-Collector/
 - `linux_security_package_count`: 已安装包数量
   - 支持包管理器类型：rpm（RedHat/CentOS）、dpkg（Debian/Ubuntu）、pacman（Arch Linux）
 
+### eBPF 安全事件监控（需 --ebpf.enabled=true）
+
+#### 元信息
+- `security_ebpf_up`: eBPF 监控状态（status 标签：active/degraded/disabled）
+- `security_ebpf_sample_rate`: 当前采样率
+
+#### 进程指标（type 标签：system/user/container/suspicious）
+- `security_ebpf_process_exec_total`: 进程执行次数
+- `security_ebpf_process_exit_total`: 进程退出次数
+- `security_ebpf_process_active_count`: 活跃进程数
+
+#### 网络指标
+- `security_ebpf_connect_total`: 网络连接总数（direction×protocol，基数 4）
+- `security_ebpf_connect_active`: 当前活跃连接数
+- `security_ebpf_connect_error_total`: 连接错误数（type 标签：timeout/refused/reset）
+
+#### 文件访问（severity×operation，基数 6）
+- `security_ebpf_file_access_total`: 敏感文件访问次数
+
+#### 提权检测（type×result，基数 6）
+- `security_ebpf_privilege_escalation_total`: 提权尝试次数
+
+#### 内核模块（action 标签，基数 2）
+- `security_ebpf_kernel_module_total`: 内核模块操作次数
+
+
 ## 文档
 
 - [快速开始指南](doc/QUICK_START.md) - 构建、运行和基本配置指南
 - [安全标准检查清单](doc/SECURITY_CHECKLIST.md) - 详细的安全检查项目和PromQL查询示例
 - [Prometheus查询示例](doc/SECURITY_CHECKLIST.md#prometheus查询示例) - 各种安全指标的查询方法
 - [告警规则示例](doc/SECURITY_CHECKLIST.md#告警规则示例) - 基于安全指标的告警配置
+- [eBPF 架构设计](doc/ebpf-architecture.md) - eBPF 集成架构设计文档
+- [eBPF 部署指南](doc/ebpf-deployment.md) - 内核要求、部署和故障排查
 
 ## 安全标准合规性
 
@@ -235,17 +280,32 @@ linux_security_login_defs_info{info_key="PASS_MIN_LEN", info_value="num"} >= 10
 ### eBPF 安全事件查询
 
 ```promql
-# eBPF 事件总数（按事件类型）
-security_ebpf_events_total{event_type="exec"}
+# eBPF 监控状态
+security_ebpf_up
 
-# eBPF 事件速率（1分钟增长率）
-rate(security_ebpf_events_total[1m])
+# 进程执行次数（按类型）
+security_ebpf_process_exec_total
 
-# Top-N 频繁系统调用
-security_ebpf_top_n{tier="1"}
+# 活跃进程数
+security_ebpf_process_active_count
 
-# eBPF 性能指标（丢弃事件数）
-security_ebpf_dropped_events_total
+# 网络连接统计
+security_ebpf_connect_total
+
+# 网络连接错误
+security_ebpf_connect_error_total
+
+# 敏感文件访问
+security_ebpf_file_access_total
+
+# 提权尝试
+security_ebpf_privilege_escalation_total
+
+# 内核模块操作
+security_ebpf_kernel_module_total
+
+# 当前采样率
+security_ebpf_sample_rate
 ```
 
 
