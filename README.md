@@ -1,4 +1,5 @@
 # Security Collector Exporter
+#KM|中文 | [English](README.en.md)
 
 Linux 安全信息收集 Prometheus Exporter，用于监控服务器安全状态。采集账户、SSH、防火墙、端口、服务、补丁、进程等安全指标，支持 eBPF 实时安全事件监控。
 
