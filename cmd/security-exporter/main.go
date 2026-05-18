@@ -42,7 +42,9 @@ func main() {
 	// 初始化 eBPF Manager
 	ebpfManager := ebpf.NewManager(cfg.EbpfEnabled)
 	if err := ebpfManager.Start(ctx); err != nil {
-		log.Fatalf("Failed to start eBPF manager: %v", err)
+		log.Printf("Failed to start eBPF manager: %v", err)
+		stop()
+		return
 	}
 	defer ebpfManager.Stop()
 
@@ -78,7 +80,9 @@ func main() {
 	case <-ctx.Done():
 		log.Println("Received shutdown signal, gracefully stopping...")
 	case err := <-serverErr:
-		log.Fatalf("Server error: %v", err)
+		log.Printf("Server error: %v", err)
+		stop()
+		return
 	}
 
 	// 优雅关闭：eBPF Manager Stop 通过 defer 调用

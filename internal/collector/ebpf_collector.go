@@ -137,13 +137,14 @@ func (c *EbpfCollector) Collect(ch chan<- prometheus.Metric) {
 	defer c.mu.Unlock()
 
 	// 状态指标
-	if c.running {
+	switch {
+	case c.running:
 		ch <- prometheus.MustNewConstMetric(c.ebpfUp, prometheus.GaugeValue, 1, "active")
-	} else if c.enabled {
+	case c.enabled:
 		ch <- prometheus.MustNewConstMetric(c.ebpfUp, prometheus.GaugeValue, 0, "degraded")
-	} else {
+	default:
 		ch <- prometheus.MustNewConstMetric(c.ebpfUp, prometheus.GaugeValue, 0, "disabled")
-		return // 未启用时不暴露其他指标
+		return
 	}
 
 	// 采样率

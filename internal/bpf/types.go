@@ -9,7 +9,7 @@ const (
 	ProcMaxCategory = 4
 )
 
-// process.c — 路径前缀长度
+// PathPrefixLen is the path prefix length for process.c
 const PathPrefixLen = 16
 
 // network.c — 网络方向常量
@@ -60,8 +60,8 @@ const (
 // file.c — 文件打开标志（与内核 O_RDONLY/O_WRONLY/O_RDWR 对应）
 const (
 	// O_RDONLY = 0  // 隐式零值
-	O_WRONLY = 1
-	O_RDWR   = 2
+	O_WRONLY = 1 //nolint:revive // Linux kernel O_WRONLY constant
+	O_RDWR   = 2 //nolint:revive // Linux kernel O_RDWR constant
 )
 
 // file.c — map 最大条目数
@@ -69,7 +69,7 @@ const (
 	FileMapMaxEntries = 6
 )
 
-// file.c — 路径最大长度
+// PathMaxLen is the maximum path length for file.c
 const PathMaxLen = 256
 
 // privilege.c — 提权类型常量

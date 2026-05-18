@@ -85,9 +85,7 @@ func TestCheckKernelVersion_TooOld(t *testing.T) {
 	oldVersions := []string{"4.19.0", "5.3.0", "3.10.0"}
 	for _, v := range oldVersions {
 		major, minor, _ := parseKernelVersion(v)
-		if major < 5 || (major == 5 && minor < 4) {
-			// 符合预期：旧版本
-		} else {
+		if major >= 5 && (major > 5 || minor >= 4) {
 			t.Errorf("kernel version %s should be considered too old (parsed as %d.%d)", v, major, minor)
 		}
 	}

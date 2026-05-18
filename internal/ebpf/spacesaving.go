@@ -81,7 +81,7 @@ func (s *SpaceSaving) findMinKey() string {
 			return s.minKey
 		}
 	}
-	var minCount uint64 = ^uint64(0)
+	var minCount = ^uint64(0)
 	var found string
 	for k, c := range s.counters {
 		if c.count < minCount {
