@@ -7,7 +7,7 @@
 ```bash
 # 克隆项目
 git clone <repository-url>
-cd Security-Collector
+cd security-collector-exporter
 
 # 构建
 go build -o security-exporter ./cmd/security-exporter

@@ -53,7 +53,6 @@ make build
 - 示例: `GOOS=linux GOARCH=amd64 make build-linux`
 
 ## 权限要求
-## 权限要求
 
 ### 必需权限
 运行 eBPF 程序需要以下权限之一：
@@ -87,7 +86,7 @@ services:
     image: security-collector-exporter:latest
     restart: unless-stopped
     ports:
-      - "9090:9090"
+      - "9102:9102"
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -108,7 +107,7 @@ services:
     image: security-collector-exporter:latest
     restart: unless-stopped
     ports:
-      - "9090:9090"
+      - "9102:9102"
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -146,7 +145,7 @@ spec:
       - name: security-exporter
         image: security-collector-exporter:latest
         ports:
-        - containerPort: 9090
+        - containerPort: 9102
           name: metrics
           protocol: TCP
         securityContext:
@@ -310,8 +309,8 @@ sudo yum install kernel-tools         # RHEL
   --ebpf.detailed=false \
   --ebpf.max-events-per-second=1000 \
   --log.level=info \
-  --metrics.port=9090 \
-  --metrics.path=/metrics
+  --web.listen-address=:9102 \
+  --web.telemetry-path=/metrics
 ```
 
 ## 故障排查

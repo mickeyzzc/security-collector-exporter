@@ -5,7 +5,7 @@
 ## 检查项目
 
 ### 1. 账户管理
-- [ ] **创建cnet账户** - `linux_security_account_info{username="cnet"}`
+- [ ] **创建专用管理账户** - `linux_security_account_info{username="admin"}`
 - [ ] **禁用root直接SSH登录** - `linux_security_sshd_config_info{info_key="PermitRootLogin", info_value="no"}`
 - [ ] **移除不必要账户** - 通过 `linux_security_account_info` 检查账户信息
 - [ ] **检查账户密码策略** - 通过 `linux_security_password_max_days` 检查密码有效期
@@ -355,7 +355,7 @@ count by (password_max_days) (linux_security_password_max_days)
 
 当发现安全配置问题时，请参考原始安全标准文档进行修复：
 
-1. **账户管理问题**: 创建cnet账户，禁用root SSH登录
+1. **账户管理问题**: 创建专用管理账户，禁用root SSH登录
 2. **密码策略问题**: 修改`/etc/login.defs`和`/etc/security/pwquality.conf`
 3. **SELinux问题**: 修改`/etc/selinux/config`并重启系统
 4. **防火墙问题**: 配置iptables或nftables规则
