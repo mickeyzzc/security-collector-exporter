@@ -49,5 +49,3 @@ build/
 .sisyphus
 AGENTS.md
 
-# bpf2go generated files (intermediate)
-internal/bpf/*_bpf.o
