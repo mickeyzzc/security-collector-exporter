@@ -261,7 +261,7 @@ func getVersionFromBinary(exePath string) string {
 		logger.Debug("getVersionFromBinary: 无法打开文件: %v", err)
 		return ""
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	maxSize := int64(1024 * 1024) // 1MB
 	content, err := io.ReadAll(io.LimitReader(f, maxSize))

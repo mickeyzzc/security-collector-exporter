@@ -219,11 +219,6 @@ func (m *Manager) startMapReaderLoop(ctx context.Context) {
 	}()
 }
 
-// ticker 包装 time.Ticker，便于测试
-type ticker interface {
-	ch() <-chan struct{}
-	stop()
-}
 
 // realTicker 基于 time.Ticker 的实现
 type realTicker struct {
@@ -268,16 +263,17 @@ func (m *Manager) Stop() {
 
 	// 关闭所有 link（分离 tracepoint/kprobe）
 	for _, l := range m.links {
-		l.Close()
+		_ = l.Close()
 	}
 	m.links = nil
 
-	// 关闭所有 BPF 对象（程序 + maps）
-	m.kernelObjs.Close()
-	m.privilegeObjs.Close()
-	m.fileObjs.Close()
-	m.networkObjs.Close()
-	m.processObjs.Close()
+	closeAll(
+		&m.kernelObjs,
+		&m.privilegeObjs,
+		&m.fileObjs,
+		&m.networkObjs,
+		&m.processObjs,
+	)
 
 	logger.Info("eBPF manager stopped")
 	m.running = false
