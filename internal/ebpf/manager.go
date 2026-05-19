@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"io"
+
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
@@ -14,6 +16,15 @@ import (
 	"security-exporter/pkg/config"
 	"security-exporter/pkg/logger"
 )
+
+// closeAll 关闭所有 BPF 对象，忽略错误（用于 loadBpfPrograms 的回滚路径）
+func closeAll(closers ...io.Closer) {
+	for _, c := range closers {
+		if c != nil {
+			_ = c.Close()
+		}
+	}
+}
 
 // Manager 管理 eBPF 程序的生命周期
 type Manager struct {
@@ -118,31 +129,25 @@ func (m *Manager) loadBpfPrograms() error {
 
 	// 加载网络监控 BPF
 	if err := bpf.LoadBpfNetworkObjects(&m.networkObjs, nil); err != nil {
-		m.processObjs.Close()
+		closeAll(&m.processObjs)
 		return fmt.Errorf("load network BPF: %w", err)
 	}
 
 	// 加载文件访问监控 BPF
 	if err := bpf.LoadBpfFileObjects(&m.fileObjs, nil); err != nil {
-		m.processObjs.Close()
-		m.networkObjs.Close()
+		closeAll(&m.processObjs, &m.networkObjs)
 		return fmt.Errorf("load file BPF: %w", err)
 	}
 
 	// 加载提权监控 BPF
 	if err := bpf.LoadBpfPrivilegeObjects(&m.privilegeObjs, nil); err != nil {
-		m.processObjs.Close()
-		m.networkObjs.Close()
-		m.fileObjs.Close()
+		closeAll(&m.processObjs, &m.networkObjs, &m.fileObjs)
 		return fmt.Errorf("load privilege BPF: %w", err)
 	}
 
 	// 加载内核模块监控 BPF
 	if err := bpf.LoadBpfKernelObjects(&m.kernelObjs, nil); err != nil {
-		m.processObjs.Close()
-		m.networkObjs.Close()
-		m.fileObjs.Close()
-		m.privilegeObjs.Close()
+		closeAll(&m.processObjs, &m.networkObjs, &m.fileObjs, &m.privilegeObjs)
 		return fmt.Errorf("load kernel BPF: %w", err)
 	}
 
