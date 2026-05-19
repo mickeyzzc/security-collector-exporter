@@ -7,19 +7,32 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"security-exporter/pkg/logger"
 )
 
-// versionCache 版本号缓存，key为可执行文件路径，value为版本号
-var versionCache = struct {
-	sync.RWMutex
-	cache map[string]string
-}{
-	cache: make(map[string]string),
+// versionCacheEntry 版本缓存条目，带过期时间
+type versionCacheEntry struct {
+	version   string
+	expireAt  time.Time
 }
 
-// getCachedProcessVersion 获取缓存的进程版本号，如果没有缓存则采集并缓存
+// versionCacheTTL 缓存有效期：5 分钟后过期，下次采集时重新探测
+// 这样既能避免单次 Collect 重复探测，又能定期刷新（如程序升级后获取新版本）
+const versionCacheTTL = 5 * time.Minute
+
+// versionCache 版本号缓存，key为可执行文件路径
+var versionCache = struct {
+	sync.RWMutex
+	cache map[string]versionCacheEntry
+}{
+	cache: make(map[string]versionCacheEntry),
+}
+
+// getCachedProcessVersion 获取缓存的进程版本号，如果没有缓存或已过期则重新采集并缓存
+// 无论版本是否为空都会缓存，避免对无法获取版本的进程重复探测导致采集阻塞
+// 缓存带 TTL（5分钟），程序升级后会在 TTL 过期后刷新版本号
 func getCachedProcessVersion(processName, exePath, cmdLine string) string {
 	// 如果没有可执行路径，直接调用原始函数
 	if exePath == "" {
@@ -28,23 +41,28 @@ func getCachedProcessVersion(processName, exePath, cmdLine string) string {
 
 	// 尝试从缓存读取
 	versionCache.RLock()
-	if version, found := versionCache.cache[exePath]; found {
+	if entry, found := versionCache.cache[exePath]; found {
 		versionCache.RUnlock()
-		logger.Debug("getCachedProcessVersion: 从缓存获取版本，路径: %s, 版本: %s", exePath, version)
-		return version
+		if time.Now().Before(entry.expireAt) {
+			logger.Debug("getCachedProcessVersion: 从缓存获取版本，路径: %s, 版本: %s", exePath, entry.version)
+			return entry.version
+		}
+		logger.Debug("getCachedProcessVersion: 缓存已过期，重新采集，路径: %s", exePath)
+	} else {
+		versionCache.RUnlock()
 	}
-	versionCache.RUnlock()
 
-	// 缓存中没有，调用原始函数采集版本
+	// 缓存中没有或已过期，调用原始函数采集版本
 	version := getProcessVersion(processName, exePath, cmdLine)
 
-	// 如果采集到版本，存入缓存
-	if version != "" {
-		versionCache.Lock()
-		versionCache.cache[exePath] = version
-		versionCache.Unlock()
-		logger.Debug("getCachedProcessVersion: 版本已缓存，路径: %s, 版本: %s", exePath, version)
+	// 无论版本是否为空都存入缓存，带 TTL
+	versionCache.Lock()
+	versionCache.cache[exePath] = versionCacheEntry{
+		version:  version,
+		expireAt: time.Now().Add(versionCacheTTL),
 	}
+	versionCache.Unlock()
+	logger.Debug("getCachedProcessVersion: 版本已缓存，路径: %s, 版本: %s", exePath, version)
 
 	return version
 }

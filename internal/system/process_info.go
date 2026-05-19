@@ -3,6 +3,7 @@ package system
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -178,6 +179,32 @@ func getVersionByCommand(processName string, exePath string) string {
 	return ""
 }
 
+// isValidVersion 检查版本号是否为合理的版本号格式
+// 过滤掉时间戳、内存地址等非版本号数字串
+func isValidVersion(version string) bool {
+	// 版本号应该至少包含一个点号，且主要部分不超过4位数字
+	// 例如: 1.2, 1.2.3, 10.0.0 合理
+	// 例如: 1779151869.2653816 不合理（时间戳）
+	parts := strings.Split(version, ".")
+	if len(parts) < 2 {
+		return false
+	}
+
+	// 每个部分不超过4位数字（正常版本号不会有5位以上的数字段）
+	for _, part := range parts {
+		if len(part) > 4 {
+			return false
+		}
+		for _, c := range part {
+			if c < '0' || c > '9' {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
 // executeVersionCommand 执行版本命令并解析结果
 func executeVersionCommand(cmd string, args []string, pattern string) string {
 	logger.Debug("executeVersionCommand: 执行命令 %s %v", cmd, args)
@@ -190,6 +217,13 @@ func executeVersionCommand(cmd string, args []string, pattern string) string {
 
 	// #nosec G204 -- 需要执行系统命令获取版本信息
 	fullCmd := exec.Command(cmd, args...)
+
+	// 设置超时，避免命令挂起阻塞采集（如 mediamtx --version 会 hang）
+	// 使用 context 带 3 秒超时
+	_, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	fullCmd.Cancel = func() error { cancel(); return nil }
+
 	output, err := fullCmd.CombinedOutput()
 	if err != nil {
 		logger.Debug("executeVersionCommand: 命令执行失败: %v", err)
@@ -200,6 +234,11 @@ func executeVersionCommand(cmd string, args []string, pattern string) string {
 	matches := re.FindStringSubmatch(string(output))
 	if len(matches) > 1 {
 		version := strings.TrimSpace(matches[1])
+		// 校验版本号合理性，过滤时间戳等非版本号
+		if !isValidVersion(version) {
+			logger.Debug("executeVersionCommand: 版本号不合理，忽略: %s", version)
+			return ""
+		}
 		logger.Debug("executeVersionCommand: 解析到版本: %s", version)
 		return version
 	}
@@ -215,18 +254,20 @@ func getVersionFromBinary(exePath string) string {
 
 	logger.Debug("getVersionFromBinary: 从文件 %s 读取版本信息", exePath)
 
-	// 读取二进制文件的一部分（前1MB通常包含版本字符串）
+	// 使用 LimitReader 只读前 1MB，避免对大文件浪费 I/O
 	// #nosec G304 -- 采集系统信息需要动态路径
-	content, err := os.ReadFile(exePath)
+	f, err := os.Open(exePath)
+	if err != nil {
+		logger.Debug("getVersionFromBinary: 无法打开文件: %v", err)
+		return ""
+	}
+	defer f.Close()
+
+	maxSize := int64(1024 * 1024) // 1MB
+	content, err := io.ReadAll(io.LimitReader(f, maxSize))
 	if err != nil {
 		logger.Debug("getVersionFromBinary: 无法读取文件: %v", err)
 		return ""
-	}
-
-	// 限制读取大小，避免读取过大文件
-	maxSize := 1024 * 1024 // 1MB
-	if len(content) > maxSize {
-		content = content[:maxSize]
 	}
 
 	contentStr := string(content)
@@ -247,8 +288,8 @@ func getVersionFromBinary(exePath string) string {
 			for i := len(matches) - 1; i >= 0; i-- {
 				if len(matches[i]) > 1 {
 					version := strings.TrimSpace(matches[i][1])
-					// 验证是否为合理的版本号格式
-					if regexp.MustCompile(`^\d+\.\d+`).MatchString(version) {
+					// 使用统一的版本号合理性校验
+					if isValidVersion(version) {
 						logger.Debug("getVersionFromBinary: 从文件解析到版本: %s", version)
 						return version
 					}
