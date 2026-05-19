@@ -49,29 +49,30 @@ docker_manifests:
       - "ghcr.io/mickeyzzc/security-collector-exporter:latest-amd64"
       - "ghcr.io/mickeyzzc/security-collector-exporter:latest-arm64"
 
+# ──────────────────────────────────────────────────────────────────────
+# Release Notes 规范:
+#   1. goreleaser 使用 "skip: true" 不自动生成 changelog
+#   2. Release 创建后，用 gh release edit 手动写入 release notes
+#   3. 格式模板见下方，保持与 v0.2.0 / v0.3.0 一致
+#
+#   ## What's New in vX.Y.Z
+#   ### [分类标题]
+#   - **功能名**: 描述
+#   ## Assets
+#   | File | Platform |
+#   |------|----------|
+#   | ..._linux_amd64.tar.gz | Linux x86_64 |
+#   | ..._linux_arm64.tar.gz | Linux ARM64 |
+#   ## Requirements
+#   - Linux 5.4+ for eBPF ...
+#   - Root or CAP_DAC_READ_SEARCH + CAP_SYS_PTRACE
+#   - Go 1.26+
+#   **Full Changelog**: ...compare/vPREV...vCURRENT
+# ──────────────────────────────────────────────────────────────────────
+
 changelog:
-  use: git
-  sort: asc
-  abbrev: 8
-  filters:
-    exclude:
-      - "^test:"
-      - "^ci:"
-      - "^chore:"
-      - "^docs:"
-      - "^refactor:"
-      - "Merge pull request"
-      - "Merge remote-tracking branch"
-      - "Merge branch"
-  groups:
-    - title: "🚀 新功能"
-      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
-      order: 0
-    - title: "🐛 问题修复"
-      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
-      order: 1
-    - title: "其他变更"
-      order: 999
+  skip: true
+
 release:
   github:
     owner: mickeyzzc
