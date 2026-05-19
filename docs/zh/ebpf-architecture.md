@@ -302,4 +302,16 @@ internal/
 - **`internal/ebpf/`**: 用户态 Go 代码
   - `collector/`: 数据收集和聚合逻辑
   - `programs/`: BPF 程序管理
-  - `config/`: 配置和资源管理
+  ## 局限性
+
+1. **内核要求**：需要 Linux 5.4+ 且支持 BTF（`/sys/kernel/btf/vmlinux` 必须存在）。缺少 BTF 时 BPF 程序无法加载。
+2. **权限要求**：必须以 root 运行或具备 `CAP_BPF`/`CAP_SYS_ADMIN` 权限。需要访问 `/sys/kernel/debug/tracing/` 和 BPF 系统调用。
+3. **容器检测**：依赖 cgroup v1/v2。`bpf_get_current_cgroup_id()` 在无容器的裸机环境返回 0，此时所有进程分类为 system/user（非 container）。
+4. **UDP 追踪不可用**：当前不追踪 UDP 流量。原因：
+   - 内核中无合适的 UDP tracepoint（仅有 `udp_fail_queue_rcv_skb` 用于错误场景）
+   - kprobe 支持依赖内核编译选项，部分发行版不可用
+5. **进程退出分类**：依赖 `execve` 时填充的 PID→分类 hash map。exporter 启动前已存在的进程通过 comm 名猜测分类（精度有限——仅匹配 8 个常见服务前缀）。
+6. **IPv6 地址**：不追踪 IPv6 地址以控制标签基数。仅记录 TCP 状态变更和端口号。
+7. **提权追踪**：使用 PERCPU_HASH 按 PID 隔离并发调用。理论上仍存在极小竞态窗口（同一 PID 在同一 CPU 上同时进行两种不同的提权调用）。
+8. **二进制架构**：BPF 字节码架构无关（编译时嵌入 Go 二进制），但 Go 二进制本身需按目标架构编译（如 ARM 设备需 `GOARCH=arm64`）。
+9. **PID Hash Map 容量**：hash map 最多持有 65,536 条目。在极高进程 churn 超出此限制时，新 `execve` 条目可能存储失败，退化为 comm 猜测分类。

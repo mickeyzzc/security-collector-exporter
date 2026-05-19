@@ -54,8 +54,6 @@ type BpfNetworkSpecs struct {
 // It can be passed ebpf.CollectionSpec.Assign.
 type BpfNetworkProgramSpecs struct {
 	TraceTcpStateChange *ebpf.ProgramSpec `ebpf:"trace_tcp_state_change"`
-	TraceUdpRecvmsg     *ebpf.ProgramSpec `ebpf:"trace_udp_recvmsg"`
-	TraceUdpSendmsg     *ebpf.ProgramSpec `ebpf:"trace_udp_sendmsg"`
 }
 
 // BpfNetworkMapSpecs contains maps before they are loaded into the kernel.
@@ -117,15 +115,11 @@ type BpfNetworkVariables struct {
 // It can be passed to LoadBpfNetworkObjects or ebpf.CollectionSpec.LoadAndAssign.
 type BpfNetworkPrograms struct {
 	TraceTcpStateChange *ebpf.Program `ebpf:"trace_tcp_state_change"`
-	TraceUdpRecvmsg     *ebpf.Program `ebpf:"trace_udp_recvmsg"`
-	TraceUdpSendmsg     *ebpf.Program `ebpf:"trace_udp_sendmsg"`
 }
 
 func (p *BpfNetworkPrograms) Close() error {
 	return _BpfNetworkClose(
 		p.TraceTcpStateChange,
-		p.TraceUdpRecvmsg,
-		p.TraceUdpSendmsg,
 	)
 }
 

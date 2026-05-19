@@ -9,6 +9,9 @@ const (
 	ProcMaxCategory = 4
 )
 
+// ProcessCategoryMapMaxEntries is the max entries for pid_category hash map
+const ProcessCategoryMapMaxEntries = 65536
+
 // PathPrefixLen is the path prefix length for process.c
 const PathPrefixLen = 16
 

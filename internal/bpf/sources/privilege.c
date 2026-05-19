@@ -47,12 +47,13 @@ struct {
     __type(value, __u64);
 } privilege_escalation_total SEC(".maps");
 
-// 用于在 sys_enter 和 sys_exit 之间传递调用类型的 percpu 临时存储
+// 用于在 sys_enter 和 sys_exit 之间传递调用类型的 percpu hash
+// 按 pid 隔离，避免同 CPU 上不同进程的竞态
 struct {
-    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-    __uint(max_entries, 1);
-    __type(key, __u32);
-    __type(value, __u32);
+    __uint(type, BPF_MAP_TYPE_PERCPU_HASH);
+    __uint(max_entries, 256);
+    __type(key, __u32);    /* pid */
+    __type(value, __u32);  /* call type */
 } call_type_tmp SEC(".maps");
 
 // ========== 通用辅助函数 ==========
@@ -73,16 +74,23 @@ static __always_inline void record_privilege_call(__u32 type, __u32 result)
 // 保存当前调用的类型到 percpu 临时 map
 static __always_inline void save_call_type(__u32 type)
 {
-    __u32 key = 0;
-    bpf_map_update_elem(&call_type_tmp, &key, &type, BPF_ANY);
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    __u32 pid = (__u32)(pid_tgid & 0xFFFFFFFF);
+    bpf_map_update_elem(&call_type_tmp, &pid, &type, BPF_ANY);
 }
 
 // 从 percpu 临时 map 读取调用类型
 static __always_inline __u32 load_call_type(void)
 {
-    __u32 key = 0;
-    __u32 *val = bpf_map_lookup_elem(&call_type_tmp, &key);
-    return val ? *val : 0;
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    __u32 pid = (__u32)(pid_tgid & 0xFFFFFFFF);
+    __u32 *val = bpf_map_lookup_elem(&call_type_tmp, &pid);
+    if (val) {
+        __u32 t = *val;
+        bpf_map_delete_elem(&call_type_tmp, &pid);
+        return t;
+    }
+    return 0;
 }
 
 // ========== setuid 追踪 ==========

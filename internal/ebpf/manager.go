@@ -166,29 +166,12 @@ func (m *Manager) attachTracepoints() error {
 		m.links = append(m.links, l)
 	}
 
-	// 辅助函数：附加 kprobe，出错时记录但继续
-	attachKprobe := func(symbol string, prog *ebpf.Program) {
-		if prog == nil {
-			return
-		}
-		l, err := link.Kprobe(symbol, prog, nil)
-		if err != nil {
-			logger.Warn(fmt.Sprintf("attach kprobe %s: %v", symbol, err))
-			return
-		}
-		m.links = append(m.links, l)
-	}
-
 	// 进程 tracepoints
 	attachTracepoint("syscalls", "sys_enter_execve", m.processObjs.TraceExecve)
 	attachTracepoint("sched", "sched_process_exit", m.processObjs.TraceProcessExit)
 
 	// 网络 tracepoints
 	attachTracepoint("sock", "inet_sock_set_state", m.networkObjs.TraceTcpStateChange)
-
-	// 网络 kprobes（UDP，可能失败，不阻止启动）
-	attachKprobe("udp_sendmsg", m.networkObjs.TraceUdpSendmsg)
-	attachKprobe("udp_recvmsg", m.networkObjs.TraceUdpRecvmsg)
 
 	// 文件 tracepoints
 	attachTracepoint("syscalls", "sys_enter_openat", m.fileObjs.TraceOpenat)

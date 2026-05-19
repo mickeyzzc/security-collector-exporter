@@ -304,4 +304,16 @@ internal/
 - **`internal/ebpf/`**: User-space Go code
   - `collector/`: Data collection and aggregation logic
   - `programs/`: BPF program management
-  - `config/`: Configuration and resource management
+  ## Limitations
+
+1. **Kernel Requirements**: Linux 5.4+ with BTF support (`/sys/kernel/btf/vmlinux` must exist). Without BTF, BPF programs cannot load.
+2. **Privilege Requirements**: Must run as root or with `CAP_BPF`/`CAP_SYS_ADMIN` capabilities. The exporter needs access to `/sys/kernel/debug/tracing/` and BPF system calls.
+3. **Container Detection**: Depends on cgroup v1/v2. `bpf_get_current_cgroup_id()` returns 0 on bare-metal systems without containers, so all processes are classified as system/user (not container).
+4. **UDP Tracking Unavailable**: The exporter does not track UDP traffic. This is because:
+   - No suitable UDP tracepoints exist in the kernel (only `udp_fail_queue_rcv_skb` for error cases)
+   - kprobe support depends on kernel compilation flags and may not be available on all distributions
+5. **Process Exit Classification**: Relies on a PID→category hash map populated at `execve` time. Processes that existed before the exporter started are classified by comm name matching (limited accuracy — only 8 common service prefixes are checked).
+6. **IPv6 Addresses**: Not tracked to control label cardinality. Only TCP state changes and port numbers are recorded.
+7. **Privilege Escalation Tracking**: Uses PERCPU_HASH keyed by PID to isolate concurrent calls. There remains a theoretical race window if the same PID makes two different privilege calls on the same CPU within a single enter/exit pair.
+8. **Binary Architecture**: BPF bytecode is architecture-independent (embedded in the Go binary at compile time), but the Go binary itself must be compiled for the target architecture (e.g., `GOARCH=arm64` for ARM devices).
+9. **PID Hash Map Capacity**: The hash map holds up to 65,536 entries. On systems with extremely high process churn exceeding this limit, new `execve` entries may fail to store, and exit classification falls back to comm-based guessing.

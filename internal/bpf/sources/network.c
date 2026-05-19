@@ -104,24 +104,22 @@ struct {
  * tracepoint/sock/inet_sock_set_state 的参数结构
  *
  * 该 tracepoint 在内核 4.16+ 可用，在 TCP 状态变更时触发。
- * 字段布局参考内核源码：net/ipv4/inet_connection_sock.c
- *   trace_inet_sock_set_state(sk, oldstate, newstate)
+ * 字段布局来自 /sys/kernel/debug/tracing/events/sock/inet_sock_set_state/format
+ *（已在目标内核 6.18 aarch64 上验证）
  *
  * 布局（在 64 位系统上）：
  *   [0-7]   common fields (trace_entry: type+flags+preempt_count+pid)
- *   [8-15]  skbaddr  (const void *)
- *   [16-23] skaddr   (const void *)
- *   [24-27] oldstate (int)
- *   [28-31] newstate (int)
- *   [32-33] sport    (__u16)
- *   [34-35] dport    (__u16)
- *   [36-37] family   (__u16)
- *   [38-39] protocol (__u16)
- *   [40+]   saddr/daddr (省略，本程序不需要)
+ *   [8-15]  skaddr   (const void *)
+ *   [16-19] oldstate (int)
+ *   [20-23] newstate (int)
+ *   [24-25] sport    (__u16)
+ *   [26-27] dport    (__u16)
+ *   [28-29] family   (__u16)
+ *   [30-31] protocol (__u16)
+ *   [32+]   saddr/daddr/saddr_v6/daddr_v6 (省略，本程序不需要)
  */
 struct trace_event_raw_inet_sock_set_state {
     __u64 pad;            /* 通用 tracepoint 头部（8 字节） */
-    const void *skbaddr;  /* skb 地址 */
     const void *skaddr;   /* sock 地址 */
     int oldstate;         /* 变更前 TCP 状态 */
     int newstate;         /* 变更后 TCP 状态 */
@@ -243,41 +241,6 @@ int trace_tcp_state_change(struct trace_event_raw_inet_sock_set_state *ctx)
         return 0;
     }
 
-    return 0;
-}
-
-/* ============================================================
- * UDP 追踪
- *
- * UDP 是无连接协议，没有状态机。
- * 使用 kprobe 追踪 udp_sendmsg / udp_recvmsg 来统计收发次数。
- *
- * 注意：kprobe 需要内核符号表支持，兼容性不如 tracepoint，
- * 但 UDP 目前没有合适的 tracepoint 可用。
- * 此处作为预留功能，后续可根据需要启用。
- * ============================================================ */
-
-/*
- * 追踪出站 UDP 发送
- * 每次 udp_sendmsg 调用即视为一次出站 UDP "连接"
- */
-SEC("kprobe/udp_sendmsg")
-int trace_udp_sendmsg(struct pt_regs *ctx)
-{
-    __u32 key = MAP_KEY(DIRECTION_OUT, PROTO_UDP);
-    increment_counter(&connect_total, key);
-    return 0;
-}
-
-/*
- * 追踪入站 UDP 接收
- * 每次 udp_recvmsg 调用即视为一次入站 UDP "连接"
- */
-SEC("kprobe/udp_recvmsg")
-int trace_udp_recvmsg(struct pt_regs *ctx)
-{
-    __u32 key = MAP_KEY(DIRECTION_IN, PROTO_UDP);
-    increment_counter(&connect_total, key);
     return 0;
 }
 

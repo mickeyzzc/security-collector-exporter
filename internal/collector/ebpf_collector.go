@@ -38,14 +38,17 @@ type EbpfCollector struct {
 	// 元信息
 	ebpfUp     *prometheus.Desc
 	sampleRate *prometheus.Desc
+	// 获取动态采样率的回调函数
+	sampleRateGetter func() uint64
 }
 
 // NewEbpfCollector 创建 eBPF collector
-func NewEbpfCollector(aggregator *ebpf.Aggregator, enabled, running bool) *EbpfCollector {
+func NewEbpfCollector(aggregator *ebpf.Aggregator, enabled, running bool, sampleRateGetter func() uint64) *EbpfCollector {
 	return &EbpfCollector{
 		aggregator: aggregator,
 		enabled:    enabled,
 		running:    running,
+		sampleRateGetter: sampleRateGetter,
 
 		// 进程指标（标签: type, 基数=4: system/user/container/suspicious）
 		processExecTotal: prometheus.NewDesc(
@@ -148,7 +151,11 @@ func (c *EbpfCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	// 采样率
-	ch <- prometheus.MustNewConstMetric(c.sampleRate, prometheus.GaugeValue, 1)
+	rate := uint64(1)
+	if c.sampleRateGetter != nil {
+		rate = c.sampleRateGetter()
+	}
+	ch <- prometheus.MustNewConstMetric(c.sampleRate, prometheus.GaugeValue, float64(rate))
 
 	// 如果未运行（降级模式），不暴露数据指标
 	if !c.running {

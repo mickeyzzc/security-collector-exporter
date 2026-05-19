@@ -2,6 +2,7 @@ package ebpf
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/cilium/ebpf"
 )
@@ -27,6 +28,10 @@ type Aggregator struct {
 
 	// 内核模块 maps
 	moduleLoadTotal *ebpf.Map // BpfKernelMaps.ModuleLoadTotal
+
+	// 增量追踪
+	mu         sync.Mutex
+	prevValues map[uint32]uint64
 }
 
 // BpfMaps 持有所有 BPF map 引用，由 Manager 在加载后注入
@@ -199,60 +204,48 @@ func (a *Aggregator) ReadKernelStats() KernelStats {
 	return stats
 }
 
-// ReadAndUpdateFromMaps 从所有 BPF maps 读取并累计事件总数，
-// 返回本次读取的事件总量，供自适应采样器使用
+// ReadAndUpdateFromMaps 从所有 COUNTER BPF maps 读取并计算每周期增量，
+// 返回本次读取的增量总和，供自适应采样器使用。
+// 注意：processActive 和 connectActive 是 GAUGE 类型，不参与增量计算。
 func (a *Aggregator) ReadAndUpdateFromMaps() uint64 {
-	var total uint64
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
-	// 进程 maps: 4 个类别
-	for i := uint32(0); i < 4; i++ {
-		if v, err := readPercpuUint64(a.processExecCount, i); err == nil {
-			total += v
-		}
-		if v, err := readPercpuUint64(a.processExitCount, i); err == nil {
-			total += v
-		}
-		if v, err := readPercpuUint64(a.processActive, i); err == nil {
-			total += v
+	// 延迟初始化 prevValues
+	if a.prevValues == nil {
+		a.prevValues = make(map[uint32]uint64)
+	}
+
+	// 定义所有 COUNTER map 及其 key 范围（不含 gauge maps）
+	type counterMap struct {
+		m     *ebpf.Map
+		base  uint32 // prevValues key 偏移基数
+		count uint32 // key 数量
+	}
+	counters := []counterMap{
+		{a.processExecCount, 0, 4},
+		{a.processExitCount, 100, 4},
+		{a.connectTotal, 200, 4},
+		{a.connectErrorTotal, 300, 3},
+		{a.fileAccessTotal, 400, 6},
+		{a.privilegeTotal, 500, 6},
+		{a.moduleLoadTotal, 600, 2},
+	}
+
+	var deltaTotal uint64
+	for _, c := range counters {
+		for i := uint32(0); i < c.count; i++ {
+			cur, err := readPercpuUint64(c.m, i)
+			if err != nil {
+				continue
+			}
+			prevKey := c.base + i
+			prev := a.prevValues[prevKey]
+			delta := cur - prev // 无符号减法：首次 prev=0 时 delta=cur
+			a.prevValues[prevKey] = cur
+			deltaTotal += delta
 		}
 	}
 
-	// 网络 maps: 4 个方向+协议
-	for i := uint32(0); i < 4; i++ {
-		if v, err := readPercpuUint64(a.connectTotal, i); err == nil {
-			total += v
-		}
-		if v, err := readPercpuUint64(a.connectActive, i); err == nil {
-			total += v
-		}
-	}
-	// 网络 errors: 3 个类型
-	for i := uint32(0); i < 3; i++ {
-		if v, err := readPercpuUint64(a.connectErrorTotal, i); err == nil {
-			total += v
-		}
-	}
-
-	// 文件 maps: 6 个组合
-	for i := uint32(0); i < 6; i++ {
-		if v, err := readPercpuUint64(a.fileAccessTotal, i); err == nil {
-			total += v
-		}
-	}
-
-	// 提权 maps: 6 个组合
-	for i := uint32(0); i < 6; i++ {
-		if v, err := readPercpuUint64(a.privilegeTotal, i); err == nil {
-			total += v
-		}
-	}
-
-	// 内核模块 maps: 2 个操作
-	for i := uint32(0); i < 2; i++ {
-		if v, err := readPercpuUint64(a.moduleLoadTotal, i); err == nil {
-			total += v
-		}
-	}
-
-	return total
+	return deltaTotal
 }

@@ -65,6 +65,7 @@ type BpfProcessMapSpecs struct {
 	ConfigMap          *ebpf.MapSpec `ebpf:"config_map"`
 	ExecCategoryCount  *ebpf.MapSpec `ebpf:"exec_category_count"`
 	ExitCategoryCount  *ebpf.MapSpec `ebpf:"exit_category_count"`
+	PidCategory        *ebpf.MapSpec `ebpf:"pid_category"`
 }
 
 // BpfProcessVariableSpecs contains global variables before they are loaded into the kernel.
@@ -97,6 +98,7 @@ type BpfProcessMaps struct {
 	ConfigMap          *ebpf.Map `ebpf:"config_map"`
 	ExecCategoryCount  *ebpf.Map `ebpf:"exec_category_count"`
 	ExitCategoryCount  *ebpf.Map `ebpf:"exit_category_count"`
+	PidCategory        *ebpf.Map `ebpf:"pid_category"`
 }
 
 func (m *BpfProcessMaps) Close() error {
@@ -105,6 +107,7 @@ func (m *BpfProcessMaps) Close() error {
 		m.ConfigMap,
 		m.ExecCategoryCount,
 		m.ExitCategoryCount,
+		m.PidCategory,
 	)
 }
 

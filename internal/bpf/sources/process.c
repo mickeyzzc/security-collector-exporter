@@ -60,6 +60,15 @@ struct {
     __type(value, __u64);
 } active_process_count SEC(".maps");
 
+// PID→分类 hash map（用于 exit 时查找原始 execve 分类）
+// key: pid_tgid (bpf_get_current_pid_tgid()), value: category
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, 65536);
+    __type(key, __u64);    /* pid_tgid */
+    __type(value, __u32);  /* category */
+} pid_category SEC(".maps");
+
 /* ============================================================
  * 辅助函数
  * ============================================================ */
@@ -82,18 +91,11 @@ static __always_inline void decrement_category(void *map, __u32 category)
     }
 }
 
-// 从 bpf_get_current_task() 获取 cgroup ID（用于容器检测）
-// 返回 0 表示获取失败或非容器环境
+// 从 bpf_get_current_cgroup_id() 获取 cgroup ID（用于容器检测）
+// 返回 0 表示非容器环境
 static __always_inline __u64 get_cgroup_id(void)
 {
-    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
-    if (!task)
-        return 0;
-
-    // 使用 BPF CO-RE 读取 cgroup 信息
-    // 在容器中，cgroup 通常包含 "docker"、"kubepods" 等标识
-    // 简化实现：返回 cgroup 的 inode 号（非零表示在 cgroup 中）
-    return 0; // 占位，后续通过 bpf_get_current_cgroup_id() 获取
+    return bpf_get_current_cgroup_id();
 }
 
 // 检查路径是否为系统路径前缀
@@ -151,6 +153,26 @@ static __always_inline int is_suspicious_interpreter(const char *path)
     return 0;
 }
 
+// 根据进程 comm 名猜测分类（用于 BPF 加载前已存在的进程）
+// 仅匹配前 4 字节，BPF verifier 友好
+static __always_inline __u32 classify_by_comm(void)
+{
+    char comm[16] = {};
+    bpf_get_current_comm(&comm, sizeof(comm));
+
+    /* 匹配已知系统服务前缀 */
+    if (comm[0] == 's' && comm[1] == 'y' && comm[2] == 's' && comm[3] == 't') return PROC_SYSTEM; /* systemd/systemd-udevd */
+    if (comm[0] == 's' && comm[1] == 's' && comm[2] == 'h' && comm[3] == 'd') return PROC_SYSTEM; /* sshd */
+    if (comm[0] == 'c' && comm[1] == 'r' && comm[2] == 'o' && comm[3] == 'n') return PROC_SYSTEM; /* cron/crond */
+    if (comm[0] == 'd' && comm[1] == 'b' && comm[2] == 'u' && comm[3] == 's') return PROC_SYSTEM; /* dbus-daemon */
+    if (comm[0] == 'n' && comm[1] == 'g' && comm[2] == 'i' && comm[3] == 'n') return PROC_SYSTEM; /* nginx */
+    if (comm[0] == 'a' && comm[1] == 'p' && comm[2] == 'a' && comm[3] == 'c') return PROC_SYSTEM; /* apache2 */
+    if (comm[0] == 'h' && comm[1] == 't' && comm[2] == 't' && comm[3] == 'p') return PROC_SYSTEM; /* httpd */
+    if (comm[0] == 'k' && comm[1] == 'w' && comm[2] == 'o' && comm[3] == 'r') return PROC_SYSTEM; /* kworker kernel threads */
+
+    return PROC_USER;
+}
+
 // 分类进程路径
 // 返回分类 ID (PROC_SYSTEM / PROC_USER / PROC_CONTAINER / PROC_SUSPICIOUS)
 static __always_inline int classify_process(const char *filename)
@@ -160,9 +182,8 @@ static __always_inline int classify_process(const char *filename)
         return PROC_SYSTEM;
 
     // 2. 检查容器进程（通过 cgroup）
-    // 后续任务会实现完整的 cgroup 检测
-    // if (get_cgroup_id() != 0)
-    //     return PROC_CONTAINER;
+    if (get_cgroup_id() != 0)
+        return PROC_CONTAINER;
 
     // 3. 默认分类为用户进程
     // TODO: 后续可增加可疑进程检测（解释器 + 非系统路径）
@@ -210,6 +231,10 @@ int trace_execve(struct trace_event_raw_sys_enter *ctx)
     increment_category(&exec_category_count, category);
     increment_category(&active_process_count, category);
 
+    // 存储 PID→分类映射，供 exit 时查找
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    bpf_map_update_elem(&pid_category, &pid_tgid, &category, BPF_ANY);
+
     return 0;
 }
 
@@ -217,11 +242,24 @@ int trace_execve(struct trace_event_raw_sys_enter *ctx)
 SEC("tracepoint/sched/sched_process_exit")
 int trace_process_exit(struct trace_event_raw_sched_process_template *ctx)
 {
-    // 进程退出时无法准确获取原始 execve 路径
-    // 使用当前 task comm 做简单分类
-    // 简化实现：统一使用 USER 分类
-    // TODO: 后续可通过 task->comm 或关联 map 改进分类精度
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    __u32 pid = (__u32)(pid_tgid & 0xFFFFFFFF);
+    __u32 tgid = (__u32)(pid_tgid >> 32);
+
+    // 只统计线程组主进程退出，忽略子线程退出
+    if (pid != tgid)
+        return 0;
+
+    // 从 hash map 查找 execve 时记录的分类
     __u32 category = PROC_USER;
+    __u32 *cat_ptr = bpf_map_lookup_elem(&pid_category, &pid_tgid);
+    if (cat_ptr) {
+        category = *cat_ptr;
+        bpf_map_delete_elem(&pid_category, &pid_tgid);
+    } else {
+        // BPF 加载前已存在的进程，用 comm 猜测分类
+        category = classify_by_comm();
+    }
 
     increment_category(&exit_category_count, category);
     decrement_category(&active_process_count, category);

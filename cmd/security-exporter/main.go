@@ -49,7 +49,7 @@ func main() {
 	defer ebpfManager.Stop()
 
 	// 创建并注册 eBPF collector（始终注册，由 collector 内部根据 enabled/running 状态决定输出）
-	ebpfCollector := collector.NewEbpfCollector(ebpfManager.Aggregator(), ebpfManager.Enabled(), ebpfManager.IsRunning())
+	ebpfCollector := collector.NewEbpfCollector(ebpfManager.Aggregator(), ebpfManager.Enabled(), ebpfManager.IsRunning(), ebpfManager.SampleRate)
 	prometheus.MustRegister(ebpfCollector)
 
 	// 注册metrics处理器
