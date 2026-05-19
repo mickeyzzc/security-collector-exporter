@@ -7,7 +7,7 @@ Compliance checklist based on Linux security configuration standards.
 ## Check Items
 
 ### 1. Account Management
-- [ ] **Create cnet account** - `linux_security_account_info{username="cnet"}`
+- [ ] **Create dedicated admin account** - `linux_security_account_info{username="admin"}`
 - [ ] **Disable direct root SSH login** - `linux_security_sshd_config_info{info_key="PermitRootLogin", info_value="no"}`
 - [ ] **Remove unnecessary accounts** - Check account information via `linux_security_account_info`
 - [ ] **Check account password policy** - Check password expiry via `linux_security_password_max_days`
@@ -357,7 +357,7 @@ count by (password_max_days) (linux_security_password_max_days)
 
 When security configuration issues are found, refer to the original security standards document for remediation:
 
-1. **Account management issues**: Create cnet account, disable root SSH login
+1. **Account management issues**: Create dedicated admin account, disable root SSH login
 2. **Password policy issues**: Modify `/etc/login.defs` and `/etc/security/pwquality.conf`
 3. **SELinux issues**: Modify `/etc/selinux/config` and reboot the system
 4. **Firewall issues**: Configure iptables or nftables rules
