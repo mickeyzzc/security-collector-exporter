@@ -1,19 +1,48 @@
 # Security Collector Exporter
 中文 | [English](README.md)
 
-Linux 安全信息收集 Prometheus Exporter，用于监控服务器安全状态。采集账户、SSH、防火墙、端口、服务、补丁、进程等安全指标，支持 eBPF 实时安全事件监控。
+<div align="center">
 
-## 快速开始
+![Go Version](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)
+[![License](https://img.shields.io/badge/License-LGPL--3.0-blue)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/mickeyzzc/security-collector-exporter)](https://github.com/mickeyzzc/security-collector-exporter/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mickeyzzc/security-collector-exporter)](https://goreportcard.com/badge/github.com/mickeyzzc/security-collector-exporter)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](https://github.com/mickeyzzc/security-collector-exporter/pulls)
+
+</div>
+
+---
+
+🔒 **Linux 安全信息收集 Prometheus Exporter** - 您的终极服务器安全监控解决方案！
+
+借助强大的 Prometheus Exporter 全面监控 Linux 服务器安全状态，提供综合安全指标、实时 eBPF 监控和企业级安全合规能力。一站式监控账户、SSH 配置、防火墙规则、端口状态、服务运行、补丁更新、进程活动以及提权尝试等，轻松部署，开箱即用。
+
+---
+
+## ✨ 特性亮点
+
+- **🛡️ 全面安全指标**：企业级安全视角监控账户、SSH、防火墙、端口、服务、补丁和进程
+- **⚡ 实时 eBPF 监控**：基于 5 个 BPF 程序、14 个内核跟踪点实现实时安全事件追踪
+- **📊 Prometheus 原生集成**：无缝对接 Prometheus 生态系统，支持告警和仪表盘
+- **🚀 多种部署方式**：支持二进制、Docker、Systemd 部署，零配置负担
+- **⚙️ 高度可配置**：自适应采样、优雅降级、灵活的采集策略
+
+---
+
+## 🚀 快速开始
 
 ### 构建和运行
 
 #### 本地构建
 
 ```bash
-# 构建
+# 1. 生成 BPF Go 绑定（需要 clang/llvm）
+go generate ./internal/bpf/...
+
+# 2. 构建应用
 go build -o security-exporter ./cmd/security-exporter
 
-# 运行
+# 3. 运行
 ./security-exporter --web.listen-address=:9102 --web.telemetry-path=/metrics
 ```
 
@@ -63,29 +92,31 @@ sudo systemctl enable --now security-exporter
 curl -s localhost:9102/metrics | head
 ```
 
+---
+
 ### 配置参数
 
 #### 基本配置
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--web.listen-address` | `:9102` | Web服务监听地址 |
-| `--web.telemetry-path` | `/metrics` | Metrics暴露路径 |
+| `--web.listen-address` | `:9102` | Web 服务监听地址 |
+| `--web.telemetry-path` | `/metrics` | 指标暴露路径 |
 | `--version` | - | 显示版本信息并退出 |
 
 #### 端口状态配置
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--collector.port-states` | `LISTEN` | 要采集的TCP端口状态，多个状态用逗号分隔 |
+| `--collector.port-states` | `LISTEN` | 要采集的 TCP 端口状态，多个状态用逗号分隔 |
 
 #### 收集器配置
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--collector.go-metrics` | `false` | 是否采集Go自身性能指标（go_*指标），默认禁用 |
-| `--collector.services-enabled` | `true` | 是否只采集启用的服务，默认true（只采集is_enabled=true的服务） |
-| `--collector.services-running` | `false` | 是否只采集运行中的服务，默认false（不过滤运行状态） |
+| `--collector.go-metrics` | `false` | 是否采集 Go 自身性能指标（go_* 指标），默认禁用 |
+| `--collector.services-enabled` | `true` | 是否只采集启用的服务，默认 true（只采集 is_enabled=true 的服务） |
+| `--collector.services-running` | `false` | 是否只采集运行中的服务，默认 false（不过滤运行状态） |
 
 #### 日志配置
 
@@ -99,9 +130,11 @@ curl -s localhost:9102/metrics | head
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--ebpf.enabled` | `false` | 是否启用 eBPF 安全事件监控（需要 Linux 5.4+，需要特权） |
-| `--ebpf.sample-rate` | `1` | eBPF 事件采样率（1=每个事件，10=每10个事件取1个） |
+| `--ebpf.sample-rate` | `1` | eBPF 事件采样率（1=每个事件，10=每 10 个事件取 1 个） |
 | `--ebpf.detailed` | `false` | 是否启用详细模式（Ring Buffer + Top-N 跟踪，资源消耗更高） |
 | `--ebpf.max-events-per-second` | `5000` | 每秒最大事件数，超过后自适应降采样 |
+
+---
 
 #### 使用示例
 
@@ -115,10 +148,10 @@ curl -s localhost:9102/metrics | head
 # 开启调试模式
 ./security-exporter --log.level=debug
 
-# 使用JSON日志格式
+# 使用 JSON 日志格式
 ./security-exporter --log.level=info --log.format=json
 
-# 启用Go自身性能指标采集
+# 启用 Go 性能指标采集
 ./security-exporter --collector.go-metrics
 
 # 采集所有服务（包括未启用和未运行的服务）
@@ -140,17 +173,36 @@ curl -s localhost:9102/metrics | head
 ./security-exporter --ebpf.enabled=true --ebpf.sample-rate=10 --ebpf.max-events-per-second=10000
 ```
 
-## 项目结构
+---
+
+## 📊 架构概览
+
+```
+┌─────────────────────────────────────────────────┐
+│                  Security Collector Exporter     │
+│  ┌─────────┐  ┌───────────┐  ┌───────────────┐  │
+│  │ System  │──│ Prometheus │──│ /metrics      │  │
+│  │ Scanner │  │ Collector  │  │ HTTP Endpoint │  │
+│  ├─────────┤  ├───────────┤  └───────────────┘  │
+│  │ eBPF    │──│ eBPF      │                     │
+│  │ BPF     │  │ Aggregator│                     │
+│  └─────────┘  └───────────┘                     │
+└─────────────────────────────────────────────────┘
+```
+
+---
+
+## 📦 项目结构
 
 ```
 security-collector-exporter/
-├── cmd/security-exporter/     # 入口，HTTP server + Prometheus 注册
+├── cmd/security-exporter/     # 入口，HTTP 服务 + Prometheus 注册
 ├── internal/
 │   ├── bpf/                 # eBPF BPF C 程序 + Go 绑定
 │   │   ├── sources/         # BPF C 源文件
 │   │   ├── bpf2go.go        # go:generate 指令
 │   │   └── types.go         # BPF 常量 Go 绑定
-│   ├── collector/            # Prometheus collector
+│   ├── collector/            # Prometheus 指标采集器
 │   │   ├── security_collector.go  # 传统安全指标采集
 │   │   └── ebpf_collector.go     # eBPF 指标采集
 │   ├── ebpf/                 # eBPF Go 集成层
@@ -159,32 +211,34 @@ security-collector-exporter/
 │   │   ├── spacesaving.go   # Space-Saving Top-N
 │   │   ├── sampler.go       # 自适应采样
 │   │   └── fallback.go      # 优雅降级
-│   └── system/               # 核心采集逻辑（12 文件）
-│       ├── account_info.go   # 账户/shadow
-│       ├── network_info.go   # 端口/防火墙
+│   └── system/               # 核心采集逻辑（12 个文件）
+│       ├── account_info.go   # 账户 / shadow
+│       ├── network_info.go   # 端口 / 防火墙
 │       ├── process_info.go   # 进程版本探测
-│       ├── config_info.go    # SSH/SELinux 配置
+│       ├── config_info.go    # SSH / SELinux 配置
 │       └── ...
 ├── pkg/
-│   ├── config/              # CLI flags + 版本注入
+│   ├── config/              # CLI 参数 + 版本注入
 │   └── logger/              # 日志封装
 ├── docs/
-│   ├── zh/              # 中文文档
-│   ├── en/              # English documentation
-│   └── README.md        # 文档导航
+│   ├── zh/                  # 中文文档
+│   ├── en/                  # English documentation
+│   └── README.md            # 文档导航
 ├── Makefile
 ├── Dockerfile
 └── docker-compose.yml
 ```
 
-## 监控指标
+---
 
-收集器提供以下安全相关指标：
+## 📈 监控指标
+
+采集器提供以下安全相关指标：
 
 ### 基础系统信息
 - `linux_security_os_version_info`: 操作系统版本信息
-- `linux_security_account_info`: 系统账户信息（passwd文件信息）
-- `linux_security_sshd_config_info`: SSH服务配置信息
+- `linux_security_account_info`: 系统账户信息（passwd 文件信息）
+- `linux_security_sshd_config_info`: SSH 服务配置信息
 
 ### 密码策略指标
 - `linux_security_last_password_change`: 最后密码修改时间（天数）
@@ -195,16 +249,16 @@ security-collector-exporter/
 - `linux_security_account_expire`: 账户过期时间（天数）
 
 ### 密码策略检查
-- `linux_security_login_defs_info`: login.defs配置信息
+- `linux_security_login_defs_info`: login.defs 配置信息
 
 ### 系统安全配置
-- `linux_security_selinux_config`: SELinux配置信息
+- `linux_security_selinux_config`: SELinux 配置信息
 - `linux_security_firewall_enabled`: 防火墙是否启用（包含防火墙类型和运行状态）
   - 支持类型：firewalld、ufw、iptables、nftables
 - `linux_security_ports_use_info`: 系统端口使用信息（包含协议、IP、端口、状态、进程名、可执行路径、版本、应用名称）
   - 协议：tcp、tcp6、udp、udp6
-  - TCP状态：LISTEN、ESTABLISHED、SYN_SENT、SYN_RECV、FIN_WAIT1、FIN_WAIT2、TIME_WAIT、CLOSE、CLOSE_WAIT、LAST_ACK、CLOSING
-- `linux_security_hosts_options_info`: hosts.deny和hosts.allow配置信息
+  - TCP 状态：LISTEN、ESTABLISHED、SYN_SENT、SYN_RECV、FIN_WAIT1、FIN_WAIT2、TIME_WAIT、CLOSE、CLOSE_WAIT、LAST_ACK、CLOSING
+- `linux_security_hosts_options_info`: hosts.deny 和 hosts.allow 配置信息
 
 ### 系统服务检查
 - `linux_security_services_info`: 系统服务信息
@@ -217,6 +271,8 @@ security-collector-exporter/
   - 支持包管理器类型：rpm（RedHat/CentOS）、dpkg（Debian/Ubuntu）、pacman（Arch Linux）
 
 ### eBPF 安全事件监控（需 --ebpf.enabled=true）
+
+使用实际的 BPF 程序加载到内核中，通过跟踪点实时监控（5 个程序，14 个跟踪点）。
 
 #### 元信息
 - `security_ebpf_up`: eBPF 监控状态（status 标签：active/degraded/disabled）
@@ -241,35 +297,40 @@ security-collector-exporter/
 #### 内核模块（action 标签，基数 2）
 - `security_ebpf_kernel_module_total`: 内核模块操作次数
 
+---
 
-## 文档
+## 📖 文档
 
 - [快速开始指南](docs/zh/QUICK_START.md) - 构建、运行和基本配置指南
-- [安全标准检查清单](docs/zh/SECURITY_CHECKLIST.md) - 详细的安全检查项目和PromQL查询示例
-- [Prometheus查询示例](docs/zh/SECURITY_CHECKLIST.md#prometheus查询示例) - 各种安全指标的查询方法
-- [告警规则示例](docs/zh/SECURITY_CHECKLIST.md#告警规则示例) - 基于安全指标的告警配置
+- [安全标准检查清单](docs/zh/SECURITY_CHECKLIST.md) - 详细的安全检查项目和 PromQL 查询示例
+- [Prometheus 查询示例](docs/zh/SECURITY_CHECKLIST.md#prometheus-query-examples) - 各种安全指标的查询方法
+- [告警规则示例](docs/zh/SECURITY_CHECKLIST.md#alert-rule-examples) - 基于安全指标的告警配置
 - [eBPF 架构设计](docs/zh/ebpf-architecture.md) - eBPF 集成架构设计文档
 - [eBPF 部署指南](docs/zh/ebpf-deployment.md) - 内核要求、部署和故障排查
 
-## 安全标准合规性
+---
 
-本收集器基于Linux安全配置标准设计，检查以下关键安全要求：
+## ✅ 安全标准合规性
+
+本采集器基于 Linux 安全配置标准设计，检查以下关键安全要求：
 
 1. **账户管理**：检查账户创建、权限配置
 2. **密码策略**：验证密码复杂度、有效期、锁定策略
-3. **系统配置**：检查SELinux、防火墙、TCP Wrappers配置
+3. **系统配置**：检查 SELinux、防火墙、TCP Wrappers 配置
 4. **服务管理**：识别不必要的服务和账户
 5. **系统维护**：监控补丁更新状态
 
-## 使用示例
+---
+
+## 💡 使用示例
 
 ### 基本查询
 
 ```promql
-# 检查SSH配置
+# 检查 SSH 配置
 linux_security_sshd_config_info{info_key="PermitRootLogin", info_value="no"}
 
-# 检查SELinux状态
+# 检查 SELinux 状态
 linux_security_selinux_config{info_key="SELINUX", info_value="enforcing"}
 
 # 检查防火墙状态（已启用且正在运行）
@@ -280,8 +341,8 @@ linux_security_ports_use_info{process="sshd", port="22"}
 
 # 检查密码策略
 linux_security_login_defs_info{info_key="PASS_MIN_LEN", info_value="num"} >= 10
-
 ```
+
 ### eBPF 安全事件查询
 
 ```promql
@@ -313,7 +374,10 @@ security_ebpf_kernel_module_total
 security_ebpf_sample_rate
 ```
 
-
 更多详细的配置说明、查询示例和告警规则，请参考：
 - [快速开始指南](docs/zh/QUICK_START.md) - 详细的配置和运行说明
 - [安全标准检查清单](docs/zh/SECURITY_CHECKLIST.md) - 完整的查询示例和告警规则
+
+---
+
+用 ❤️ 构建

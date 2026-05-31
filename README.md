@@ -2,9 +2,36 @@
 
 # Security Collector Exporter
 
-Linux Security Information Collector Prometheus Exporter, used for monitoring server security status. Collects security metrics including accounts, SSH, firewall, ports, services, patches, processes, and supports real eBPF security event monitoring using 5 actual BPF programs with 14 kernel tracepoints.
+<div align="center">
 
-## Quick Start
+![Go Version](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)
+[![License](https://img.shields.io/badge/License-LGPL--3.0-blue)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/mickeyzzc/security-collector-exporter)](https://github.com/mickeyzzc/security-collector-exporter/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mickeyzzc/security-collector-exporter)](https://goreportcard.com/badge/github.com/mickeyzzc/security-collector-exporter)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](https://github.com/mickeyzzc/security-collector-exporter/pulls)
+
+</div>
+
+---
+
+
+🔒 **Linux Security Information Collector Prometheus Exporter** - Your Ultimate Server Security Monitoring Solution!
+
+Transform your Linux security monitoring with a powerful Prometheus exporter that provides comprehensive security metrics, real-time eBPF monitoring, and enterprise-grade security compliance. Monitor everything from accounts and SSH configuration to firewall rules and privilege escalation attempts, all in one easy-to-deploy solution.
+
+---
+
+## ✨ Features
+
+- **🛡️ Comprehensive Security Metrics**: Monitor accounts, SSH, firewall, ports, services, patches, and processes with enterprise-grade security insights
+- **⚡ Real-time eBPF Monitoring**: Powered by 5 actual BPF programs with 14 kernel tracepoints for real-time security event tracking
+- **📊 Prometheus Native Integration**: Seamless integration with Prometheus ecosystem for alerting and dashboarding
+- **🚀 Multiple Deployment Options**: Binary, Docker, and Systemd deployments with zero configuration overhead
+- **⚙️ Highly Configurable**: Adaptive sampling, graceful degradation, and flexible collection policies
+
+---
+
+## 🚀 Quick Start
 
 ### Build and Run
 
@@ -67,6 +94,10 @@ sudo systemctl enable --now security-exporter
 curl -s localhost:9102/metrics | head
 ```
 
+---
+
+---
+
 ### Configuration Parameters
 
 #### Basic Configuration
@@ -107,6 +138,10 @@ curl -s localhost:9102/metrics | head
 | `--ebpf.detailed` | `false` | Whether to enable detailed mode (Ring Buffer + Top-N tracking, higher resource consumption) |
 | `--ebpf.max-events-per-second` | `5000` | Maximum events per second, adaptive downsampling after exceeding this limit |
 
+---
+
+---
+
 #### Usage Examples
 
 ```bash
@@ -144,7 +179,26 @@ curl -s localhost:9102/metrics | head
 ./security-exporter --ebpf.enabled=true --ebpf.sample-rate=10 --ebpf.max-events-per-second=10000
 ```
 
-## Project Structure
+---
+
+## 📊 Architecture Overview
+
+```
+┌─────────────────────────────────────────────────┐
+│                  Security Collector Exporter     │
+│  ┌─────────┐  ┌───────────┐  ┌───────────────┐  │
+│  │ System  │──│ Prometheus │──│ /metrics      │  │
+│  │ Scanner │  │ Collector  │  │ HTTP Endpoint │  │
+│  ├─────────┤  ├───────────┤  └───────────────┘  │
+│  │ eBPF    │──│ eBPF      │                     │
+│  │ BPF     │  │ Aggregator│                     │
+│  └─────────┘  └───────────┘                     │
+└─────────────────────────────────────────────────┘
+```
+
+---
+
+## 📦 Project Structure
 
 ```
 security-collector-exporter/
@@ -181,7 +235,9 @@ security-collector-exporter/
 └── docker-compose.yml
 ```
 
-## Monitoring Metrics
+---
+
+## 📈 Monitoring Metrics
 
 The collector provides the following security-related metrics:
 
@@ -247,7 +303,9 @@ Uses real BPF programs loaded into the kernel with actual tracepoint monitoring 
 #### Kernel Modules (action label, cardinality 2)
 - `security_ebpf_kernel_module_total`: Kernel module operation count
 
-## Documentation
+---
+
+## 📖 Documentation
 
 - [Quick Start Guide](docs/en/QUICK_START.md) - Build, run, and basic configuration guide
 - [Security Checklist](docs/en/SECURITY_CHECKLIST.md) - Detailed security check items and PromQL query examples
@@ -256,7 +314,9 @@ Uses real BPF programs loaded into the kernel with actual tracepoint monitoring 
 - [eBPF Architecture Design](docs/en/ebpf-architecture.md) - eBPF integration architecture design document
 - [eBPF Deployment Guide](docs/en/ebpf-deployment.md) - Kernel requirements, deployment, and troubleshooting
 
-## Security Standard Compliance
+---
+
+## ✅ Security Standard Compliance
 
 This collector is designed based on Linux security configuration standards, checking the following key security requirements:
 
@@ -266,7 +326,9 @@ This collector is designed based on Linux security configuration standards, chec
 4. **Service Management**: Identify unnecessary services and accounts
 5. **System Maintenance**: Monitor patch update status
 
-## Usage Examples
+---
+
+## 💡 Usage Examples
 
 ### Basic Queries
 
@@ -321,3 +383,7 @@ security_ebpf_sample_rate
 For more detailed configuration instructions, query examples, and alert rules, please refer to:
 - [Quick Start Guide](docs/en/QUICK_START.md) - Detailed configuration and operation instructions
 - [Security Checklist](docs/en/SECURITY_CHECKLIST.md) - Complete query examples and alert rules
+
+---
+
+Made with ❤️ by the Security Collector team
